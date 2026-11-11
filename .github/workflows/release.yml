@@ -1,0 +1,48 @@
+name: Release
+on:
+  push:
+    tags: ['v*']
+permissions:
+  contents: write
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - run: npm test
+  mac:
+    needs: test
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+      - run: node scripts/build.mjs darwin-arm64 darwin-x64
+      - name: Firma ad-hoc
+        run: |
+          codesign --force --sign - dist/jobdossiers-mcp-darwin-arm64
+          codesign --force --sign - dist/jobdossiers-mcp-darwin-x64
+      - uses: actions/upload-artifact@v4
+        with: { name: mac, path: 'dist/jobdossiers-mcp-darwin-*' }
+  windows:
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+      - run: node scripts/build.mjs windows-x64
+      - uses: actions/upload-artifact@v4
+        with: { name: windows, path: 'dist/jobdossiers-mcp-windows-*' }
+  publish:
+    needs: [mac, windows]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with: { path: dist, merge-multiple: true }
+      - name: Somme di controllo e release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          cd dist && sha256sum jobdossiers-mcp-* > SHA256SUMS && cat SHA256SUMS
+          gh release create "$GITHUB_REF_NAME" jobdossiers-mcp-* SHA256SUMS --repo "$GITHUB_REPOSITORY" --title "$GITHUB_REF_NAME" --generate-notes

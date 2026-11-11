@@ -1,0 +1,105 @@
+# jobdossiers-mcp
+
+Server MCP locale per [Jobdossiers](https://jobdossiers.ch). Legge e aggiorna le candidature con la cifratura end-to-end del portale: il segreto della chiave per automazioni resta su questo computer, il server di Jobdossiers vede solo blob cifrati.
+
+Un solo eseguibile, nessuna dipendenza (Node o Bun a runtime non servono). Con `bun build --compile` si ottengono i binari per macOS (arm64, x64) e Windows.
+
+## Installazione
+
+1. In Jobdossiers: **Account → Chiave per automazioni** (piano Plus). Si ottiene `jda1.<token>.<segreto>`, mostrata una volta.
+2. Scarica il binario dalla release e verifica l'hash con `SHA256SUMS`. Su Mac: `chmod +x` e `xattr -d com.apple.quarantine <file>`.
+3. Salva la chiave: `jobdossiers-mcp --set-key`. Su macOS finisce nel Portachiavi (il comando `security` la chiede senza mostrarla), su Windows in un file cifrato con DPAPI, altrove in `~/.config/jobdossiers/key` con permessi 600. In alternativa `JD_AGENT_KEY` o `JD_AGENT_KEY_FILE`.
+4. Prova in sola lettura: `jobdossiers-mcp --check`. Stampa conteggi e **nomi** dei campi cifrati in uso, mai valori.
+5. Registra il server in Claude desktop (`~/Library/Application Support/Claude/claude_desktop_config.json`, su Windows `%APPDATA%\Claude\claude_desktop_config.json`):
+
+```json
+{ "mcpServers": { "jobdossiers": { "command": "/percorso/jobdossiers-mcp-darwin-arm64" } } }
+```
+
+## App per Mac (prototipo)
+
+`mac/` contiene un'app per la barra dei menu che include il server e lo configura:
+
+- salva ed elimina la chiave nel Portachiavi, nella voce che legge il server (senza mai rileggerne il valore);
+- scrive o toglie la voce `jobdossiers` in Claude Desktop e in ChatGPT (Codex) (copia `.jobdossiers.bak` prima di scrivere; per Claude Code copia il comando `claude mcp add`);
+- si apre all'accesso al Mac e mostra le schede per stato (`--check`, ogni ora).
+
+```
+mac/build-app.sh             # richiede Xcode e bun; scrive dist/Jobdossiers.app (firma ad-hoc)
+(cd mac && swift test)       # test della configurazione dei client
+```
+
+Sposta l'app in Applicazioni prima di configurare i client: puntano al server dentro l'app.
+
+## App per Windows (prototipo)
+
+`win/` contiene l'app per l'area di notifica di Windows, con le stesse funzioni di quella per Mac: include il server, salva la chiave in `%APPDATA%\jobdossiers-mcp\key.dpapi` (DPAPI, lo stesso formato di `--set-key`), configura Claude Desktop e ChatGPT (con Codex), con il comando per Claude Code, si apre all'accesso e mostra le schede per stato. Il server viene copiato in `%LOCALAPPDATA%\Jobdossiers\`, il percorso a cui puntano i client. L'installer (`Jobdossiers-Setup-<versione>-x64.exe`, NSIS) installa solo per l'utente corrente, senza diritti di amministratore, proprio in quella cartella; crea il collegamento nel menu Start, attiva l'avvio all'accesso e si disinstalla da "App installate" (toglie la voce dai client MCP e chiede se cancellare la chiave).
+
+```
+win/build.sh                 # da macOS o Linux: richiede .NET 10, bun e makensis; scrive l'installer e lo zip portatile in dist/
+dotnet test win/tests/Jobdossiers.Tests
+```
+
+### Client configurati dalle app
+
+Le app configurano con un clic solo i client più diffusi:
+- **Claude Desktop**. Su Windows il file si cerca, perché il pacchetto MSIX lo tiene in `%LOCALAPPDATA%\Claude-Data\claude_<pacchetto>\` e non in `%APPDATA%\Claude`; in Impostazioni si vede il file scelto, e con «Scegli file…» si indica quello che apre Claude con *Settings → Desktop app → Extensions → Edit config*.
+- **ChatGPT e Codex**: sezione `[mcp_servers.jobdossiers]` in `~/.codex/config.toml` (Windows: `%USERPROFILE%\.codex\config.toml`; con `CODEX_HOME` altrove). Su Windows vale per la Chat e per Codex; su macOS ChatGPT usa i server locali solo in Codex, non nella Chat (prova dell'11.11.2026), per questo l'app Mac la chiama «ChatGPT (Codex)». Un server aggiunto a mano dalle impostazioni di ChatGPT con un altro nome viene riconosciuto.
+- **Claude Code**: comando `claude mcp add` da copiare.
+
+Il server funziona con qualunque client MCP via stdio: per gli altri (Cursor, VS Code, LM Studio…) si aggiunge a mano un server con comando il percorso di `jobdossiers-mcp` e nessun argomento.
+
+## Tool
+
+| Tool | Cosa fa |
+|---|---|
+| `jd_list` | Elenco compatto (senza descrizione del posto), filtri `status`, `query`, `incomplete` |
+| `jd_get` | Scheda completa decifrata; `job_desc` solo con `include_job_desc` |
+| `jd_find_duplicates` | URL normalizzato, ID LinkedIn/Indeed/jobs.ch, azienda+ruolo (anche `alt_companies` per i recruiter) |
+| `jd_create` | Nuova scheda `preparing` (il portale la porta a `to_send` a analisi finita); rifiuta i duplicati |
+| `jd_update` | Unisce campi cifrati, imposta `automation` e `rav`, accoda una nota |
+| `jd_set_status` | `preparing`, `in_review`, `interview`, `offer`, `rejected`, `no_answer`, `deleted`; i vecchi `hr_interview` e `tech_interview` valgono come `interview` (anche nel filtro di `jd_list`) |
+| `jd_add_note` | Nota datata `[agente]`, solo in aggiunta |
+| `jd_quota` | Uso del piano e numero di schede |
+| `jd_docs` | CV e lettere generati dalla piattaforma (nomi, non contenuti) |
+| `jd_upload_doc` | Carica un CV o una lettera (`.pdf` o `.docx`, al massimo 6 MB) da questo computer su una scheda `preparing`, `to_send`, `sent`, `in_review` o in colloquio (`interview`, e i vecchi `hr_interview` e `tech_interview`), solo se per quel tipo non c'è ancora un documento (`doc_exists`, non sostituisce mai); il file si cifra qui. Dopo l'invio lascia una nota `[agente]` con data, tipo e nome del file. Il portale ne accetta al massimo 30 all'ora (finestra mobile di 60 minuti): oltre risponde `rate_limited`, con l'attesa se il portale la indica. Con `JD_UPLOAD_DIR` si limita a una cartella |
+| `jd_agenda` | Appuntamenti liberi dell'agenda, decifrati e ordinati per data; filtri `from`, `to`, `query` |
+| `jd_agenda_save` | Crea un appuntamento (`title`, `at` in ora di Zurigo, `kind`, `place`, `who`, `note`, `app`) o ne cambia solo i campi dati; niente cancellazione |
+
+## Regole nel codice
+
+- `sent` e `withdrawn` non sono impostabili dall'agente; non esistono invio né cancellazione definitiva di schede o appuntamenti. Si caricano solo CV e lettera, negli stati di `DOC_UPLOAD_STATUSES` e mai al posto di un documento esistente; negli altri stati `docs_locked`. `deleted` toglie la scheda dalla lista ma resta ripristinabile scegliendo un altro stato.
+- `jobroom_registered_on` non viene mai inviato; le note non si sovrascrivono; i campi cifrati che l'agente non conosce sono conservati a ogni salvataggio.
+- Conflitto di versione: il client rilegge e riapplica la modifica (3 tentativi). Le schede in sola lettura o non decifrabili non si toccano.
+- Il token viaggia solo verso `jobdossiers.ch` (o localhost per i test), solo su HTTPS, senza seguire redirect.
+- Su stdout passa solo il protocollo; stderr non contiene segreti né testi decifrati.
+
+## Che cosa non protegge
+
+Quello che i tool restituiscono è testo decifrato e arriva al modello che esegue l'agente: da lì esce dalla cifratura end-to-end. `job_desc`, note e testo delle mail sono dati non fidati, non istruzioni. Revocare la chiave non annulla una copia della chiave dati già fatta.
+
+## Sviluppo
+
+```
+npm test                     # 17 test, nessuna dipendenza
+node scripts/build.mjs       # richiede bun; scrive dist/ e SHA256SUMS
+```
+
+La release (tag `v*`) costruisce i binari in CI: Mac con firma ad-hoc, Windows senza firma (avviso SmartScreen). Per distribuirli ad altri servono Developer ID con notarizzazione e un certificato Authenticode.
+
+Verificato: cifratura e formato contro `public/assets/e2ee.js` del portale, protocollo MCP su stdio, regole e conflitti con un server finto. Da verificare: `bun build --compile`, Portachiavi macOS, DPAPI su Windows, workflow di release, uso reale con la chiave.
+
+## Uso da riga di comando (task schedulati)
+
+`jobdossiers-mcp call <tool> [json|-]` esegue un solo tool con le stesse regole del server MCP e stampa il risultato JSON su una riga (exit 1 in caso di errore). Con `-` legge il JSON da stdin, comodo per testi lunghi:
+
+```
+JD_AGENT_KEY_FILE=/percorso/key node src/index.js call jd_list '{"status":"to_send","limit":5}'
+node src/index.js call jd_create - <<'EOF2'
+{"company":"...","role":"...","job_url":"https://..."}
+EOF2
+```
+
+## Licenza
+
+Apache License 2.0: vedi [`LICENSE`](LICENSE) e [`NOTICE`](NOTICE). La licenza non concede l'uso del nome Jobdossiers per prodotti derivati. Per segnalare un problema di sicurezza vedi [`SECURITY.md`](SECURITY.md).

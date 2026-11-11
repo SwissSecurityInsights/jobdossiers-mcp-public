@@ -1,0 +1,9 @@
+node_modules/
+dist/
+*.log
+.DS_Store
+.local/
+mac/.build/
+*.bun-build
+win/**/bin/
+win/**/obj/

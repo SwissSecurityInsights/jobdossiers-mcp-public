@@ -1,0 +1,14 @@
+{
+  "name": "jobdossiers-mcp",
+  "version": "0.1.0",
+  "private": true,
+  "license": "Apache-2.0",
+  "type": "module",
+  "description": "Server MCP locale per Jobdossiers: legge e aggiorna le candidature con la cifratura end-to-end, senza che il segreto lasci il computer.",
+  "bin": { "jobdossiers-mcp": "src/index.js" },
+  "engines": { "node": ">=20" },
+  "scripts": {
+    "test": "node --test test/*.test.js",
+    "build": "node scripts/build.mjs"
+  }
+}
