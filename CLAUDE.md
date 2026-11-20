@@ -13,7 +13,7 @@ Il server MCP **locale** di Jobdossiers (`jobdossiers.ch`), con gli eseguibili d
 - Build degli eseguibili: `node scripts/build.mjs` (richiede Bun), scrive `dist/` e `SHA256SUMS`. `dist/` non va committato.
 - App Mac (barra dei menu): `mac/`, Swift; `mac/build-app.sh`, test con `(cd mac && swift test)`.
 - App Windows: `win/`, .NET 10; test con `dotnet test win/tests/Jobdossiers.Tests`, installer NSIS in `win/installer/`.
-- CI (`ci.yml`): Node su Linux, Swift su macOS, .NET su Windows. `windows-smoke.yml` (quando cambiano `win/`, `src/` o `scripts/`) costruisce l'installer e lo prova su Windows con `win/tests/smoke.ps1`: installazione silenziosa, avvio con screenshot negli artefatti, disinstallazione. `release.yml` costruisce i binari al tag `v*`.
+- CI (`ci.yml`): Node su Linux, Swift su macOS, .NET su Windows. `windows-smoke.yml` (quando cambiano `win/`, `src/` o `scripts/`) costruisce l'installer e lo prova su Windows con `win/tests/smoke.ps1`: installazione silenziosa, avvio con screenshot negli artefatti, disinstallazione. `release.yml` al tag `v*` costruisce e pubblica nella release app per Mac, installer e zip per Windows, server per macOS, Windows e Linux, `SHA256SUMS` e attestazioni; avviato a mano fa solo la prova, senza release.
 - Residui di build non tracciati (`mac/.build`, `win/**/bin`, `win/**/obj`, `*.bun-build`): non committarli.
 - Comando di progetto: `/linkedin-salvate` (in sola lettura su LinkedIn, vedi `.claude/commands/`).
 

@@ -21,7 +21,7 @@ export async function startMock(fx, seeds = SEEDS()) {
   let n = 0;
   const mk = async s => ({ id: 'r' + (++n), pos: n, status: 'to_send', applied_on: null, status_changed_on: null, automation: '', rav: '', jobroom_registered_on: null, version: 1, enc: s.rawEnc ?? await encObj(fx.dek, s.d, AAD.app), ...Object.fromEntries(Object.entries(s).filter(([k]) => PLAIN.includes(k) || k === 'ro')) });
   for (const s of seeds) rows.push(await mk(s));
-  const state = { rows, requests, conflictOnce: false, docs: [], uploads: [], agenda: [] };
+  const state = { rows, requests, conflictOnce: false, docs: [], uploads: [], agenda: [], files: new Map(), net: [], netDenied: false };
   let ag = 0;
   const server = http.createServer((req, res) => {
     const chunks = [];
@@ -50,6 +50,13 @@ export async function startMock(fx, seeds = SEEDS()) {
         state.docs = state.docs.filter(x => !(x.kind === kind && x.application_id === app)).concat([{ id, kind, application_id: app, meta_enc: meta, size: raw.length, created_at: 0 }]);
         return send(200, { ok: true, id });
       }
+      if (action === 'doc_get') {          // byte cifrati del documento (IV || ct || tag), come Documents del portale
+        const f = state.files.get(new URL(req.url, 'http://x').searchParams.get('id'));
+        if (!f) return send(404, { ok: false, error: 'not_found' });
+        res.writeHead(200, { 'Content-Type': 'application/octet-stream' });
+        return res.end(Buffer.from(f));
+      }
+      if (action === 'net_list') return state.netDenied ? send(403, { ok: false, error: 'agent_scope' }) : send(200, { ok: true, items: state.net });
       if (action === 'agenda_list') return send(200, { ok: true, items: state.agenda });
       if (action === 'agenda_save') {
         const b = JSON.parse(body);

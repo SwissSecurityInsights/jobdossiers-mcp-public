@@ -103,4 +103,13 @@ final class ClientsTests: XCTestCase {
         XCTAssertFalse(KeyStore.isValid("jda2.\(t).\(t)"))
         XCTAssertFalse(KeyStore.isValid("jda1.\(t).\(t.dropLast())+"))
     }
+
+    /// La chiave va a `security -i` sullo standard input: stessa voce (servizio, account) che legge src/store.js, senza -U.
+    func testComandiPortachiavi() {
+        let k = "jda1.\(String(repeating: "A", count: 43)).\(String(repeating: "b", count: 43))"
+        let a = KeyStore.quote(KeyStore.account)
+        XCTAssertEqual(KeyStore.addCommand(key: k), "add-generic-password -s \"jobdossiers-mcp\" -a \(a) -l \"jobdossiers-mcp\" -w \"\(k)\"\n")
+        XCTAssertEqual(KeyStore.deleteCommand(), "delete-generic-password -s \"jobdossiers-mcp\" -a \(a)\n")
+        XCTAssertEqual(KeyStore.quote(#"a"b\c"#), #""a\"b\\c""#)
+    }
 }

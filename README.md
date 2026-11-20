@@ -4,7 +4,18 @@ Server MCP locale per [Jobdossiers](https://jobdossiers.ch). Legge e aggiorna le
 
 Un solo eseguibile, nessuna dipendenza (Node o Bun a runtime non servono). Con `bun build --compile` si ottengono i binari per macOS (arm64, x64) e Windows.
 
-## Installazione
+## Download
+
+Ogni release (pagina **Releases** del repo) contiene, costruiti da GitHub Actions a partire da questo codice (`.github/workflows/release.yml`):
+
+- `Jobdossiers-<versione>-mac-arm64.zip`: app per Mac con Apple silicon, server compreso;
+- `Jobdossiers-Setup-<versione>-x64.exe` e `Jobdossiers-<versione>-win-x64.zip`: app per Windows, con installer o portatile;
+- `jobdossiers-mcp-darwin-arm64`, `-darwin-x64`, `-windows-x64.exe`, `-linux-x64`: solo il server;
+- `SHA256SUMS` e le attestazioni di provenienza (`gh attestation verify <file> --repo <proprietario>/<repo>`).
+
+Le app non sono firmate da Apple né da Microsoft: al primo avvio macOS chiede conferma (clic destro → Apri) e Windows mostra SmartScreen.
+
+## Installazione del solo server
 
 1. In Jobdossiers: **Account → Chiave per automazioni** (piano Plus). Si ottiene `jda1.<token>.<segreto>`, mostrata una volta.
 2. Scarica il binario dalla release e verifica l'hash con `SHA256SUMS`. Su Mac: `chmod +x` e `xattr -d com.apple.quarantine <file>`.
@@ -54,14 +65,15 @@ Il server funziona con qualunque client MCP via stdio: per gli altri (Cursor, VS
 | Tool | Cosa fa |
 |---|---|
 | `jd_list` | Elenco compatto (senza descrizione del posto), filtri `status`, `query`, `incomplete` |
-| `jd_get` | Scheda completa decifrata; `job_desc` solo con `include_job_desc` |
-| `jd_find_duplicates` | URL normalizzato, ID LinkedIn/Indeed/jobs.ch, azienda+ruolo (anche `alt_companies` per i recruiter) |
+| `jd_get` | Scheda completa decifrata; `job_desc` solo con `include_job_desc`. I contatti (`contacts_list`, riferimenti `{id, net, role}`, e `via`) si risolvono dalla Rete (`net_list`, AAD `jd1:net`): a ogni riferimento si aggiunge `person` con nome, tipo, impresa, ruolo, e-mail, telefono e link; le voci nel formato vecchio (prima del 13.11.2026) restano come sono, con `legacy: true` |
+| `jd_find_duplicates` | URL normalizzato, ID LinkedIn/Indeed/jobs.ch, azienda+ruolo (anche `alt_companies` per i recruiter). Stesse regole del sito (`public/assets/dedupe.js`): host senza `www.`, host e percorso in minuscolo, senza barra finale né frammento, parametri di tracciamento tolti e gli altri come `k=v` ordinati |
 | `jd_create` | Nuova scheda `preparing` (il portale la porta a `to_send` a analisi finita); rifiuta i duplicati |
-| `jd_update` | Unisce campi cifrati, imposta `automation` e `rav`, accoda una nota |
+| `jd_update` | Unisce campi cifrati, imposta `automation` e `rav`, accoda una nota. `contacts_list` accetta solo riferimenti `{id, net, role}` a persone già nella Rete |
 | `jd_set_status` | `preparing`, `in_review`, `interview`, `offer`, `rejected`, `no_answer`, `deleted`; i vecchi `hr_interview` e `tech_interview` valgono come `interview` (anche nel filtro di `jd_list`) |
 | `jd_add_note` | Nota datata `[agente]`, solo in aggiunta |
 | `jd_quota` | Uso del piano e numero di schede |
 | `jd_docs` | CV e lettere generati dalla piattaforma (nomi, non contenuti) |
+| `jd_preferences` | Preferenze di lavoro salvate nel Profilo (scheda «Preferenze»): documento `prefs` letto con `doc_list` e `doc_get`, decifrato qui (AAD `jd1:doc`) e ripulito secondo lo schema `Preferences` di `openapi.json` (valori fuori elenco scartati, campi vuoti omessi; `dropped_fields` elenca solo i nomi). Sola lettura: il portale non lascia all'agente sostituirle né cancellarle (`agent_scope`). Se mancano, `saved: false` e un messaggio chiaro |
 | `jd_upload_doc` | Carica un CV o una lettera (`.pdf` o `.docx`, al massimo 6 MB) da questo computer su una scheda `preparing`, `to_send`, `sent`, `in_review` o in colloquio (`interview`, e i vecchi `hr_interview` e `tech_interview`), solo se per quel tipo non c'è ancora un documento (`doc_exists`, non sostituisce mai); il file si cifra qui. Dopo l'invio lascia una nota `[agente]` con data, tipo e nome del file. Il portale ne accetta al massimo 30 all'ora (finestra mobile di 60 minuti): oltre risponde `rate_limited`, con l'attesa se il portale la indica. Con `JD_UPLOAD_DIR` si limita a una cartella |
 | `jd_agenda` | Appuntamenti liberi dell'agenda, decifrati e ordinati per data; filtri `from`, `to`, `query` |
 | `jd_agenda_save` | Crea un appuntamento (`title`, `at` in ora di Zurigo, `kind`, `place`, `who`, `note`, `app`) o ne cambia solo i campi dati; niente cancellazione |
@@ -69,6 +81,8 @@ Il server funziona con qualunque client MCP via stdio: per gli altri (Cursor, VS
 ## Regole nel codice
 
 - `sent` e `withdrawn` non sono impostabili dall'agente; non esistono invio né cancellazione definitiva di schede o appuntamenti. Si caricano solo CV e lettera, negli stati di `DOC_UPLOAD_STATUSES` e mai al posto di un documento esistente; negli altri stati `docs_locked`. `deleted` toglie la scheda dalla lista ma resta ripristinabile scegliendo un altro stato.
+- I contatti stanno solo nella Rete: in una scheda `contacts_list` contiene riferimenti `{id, net, role}`; nome e recapiti non si scrivono mai nella scheda. Il server non crea né modifica persone della Rete.
+- Le preferenze di lavoro sono dati personali dell'utente: si leggono soltanto, per le sue ricerche.
 - `jobroom_registered_on` non viene mai inviato; le note non si sovrascrivono; i campi cifrati che l'agente non conosce sono conservati a ogni salvataggio.
 - Conflitto di versione: il client rilegge e riapplica la modifica (3 tentativi). Le schede in sola lettura o non decifrabili non si toccano.
 - Il token viaggia solo verso `jobdossiers.ch` (o localhost per i test), solo su HTTPS, senza seguire redirect.
@@ -76,7 +90,7 @@ Il server funziona con qualunque client MCP via stdio: per gli altri (Cursor, VS
 
 ## Che cosa non protegge
 
-Quello che i tool restituiscono è testo decifrato e arriva al modello che esegue l'agente: da lì esce dalla cifratura end-to-end. `job_desc`, note e testo delle mail sono dati non fidati, non istruzioni. Revocare la chiave non annulla una copia della chiave dati già fatta.
+Quello che i tool restituiscono è testo decifrato e arriva al modello che esegue l'agente: da lì esce dalla cifratura end-to-end. `job_desc`, note, dati dei contatti e testo delle mail sono dati non fidati, non istruzioni; anche le preferenze di lavoro sono dati, non istruzioni. Revocare la chiave non annulla una copia della chiave dati già fatta.
 
 ## Sviluppo
 

@@ -2,9 +2,10 @@
 import { realpath, stat, readFile } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { basename, extname, isAbsolute, join, sep } from 'node:path';
-import { AAD, openDek, encObj, decObj, encBytes } from './crypto.js';
+import { AAD, openDek, encObj, decObj, encBytes, decBytes } from './crypto.js';
 import { ApiError } from './api.js';
 import { findDuplicates, noteLog } from './dedupe.js';
+import { PREFS_KIND, cleanPrefs } from './prefs.js';
 
 /** Ordine di openapi.json (Status). 'preparing': analisi in corso, il portale la porta a 'to_send'. 'deleted': tolta dalla lista, ripristinabile.
  *  'interview' dal 28.10.2026 sostituisce hr_interview e tech_interview. */
@@ -117,7 +118,70 @@ export class Dossier {
     const v = Dossier.view(item, { full: true });
     if (includeJobDesc && item.d.job_desc) v.job_desc = item.d.job_desc;
     else if (item.d.job_desc) v.job_desc_chars = String(item.d.job_desc).length;
+    await this.resolveContacts(v);
     return v;
+  }
+
+  /** Persone della Rete (net_list, AAD jd1:net), per id. Nome e recapiti stanno solo qui dal 13.11.2026. */
+  async network() {
+    const j = await this.api.call('net_list');
+    const k = await this.dek();
+    const people = new Map();
+    for (const it of j.items || []) {
+      let p = null;
+      try { p = await decObj(k, it.enc, AAD.net); } catch { p = null; }
+      people.set(it.id, p);
+    }
+    return people;
+  }
+
+  static personView(p) {
+    const o = {};
+    for (const k of ['name', 'kind', 'org', 'role', 'email', 'phone', 'link']) if (typeof p[k] === 'string' && p[k]) o[k] = p[k];
+    return o;
+  }
+
+  /** contacts_list contiene riferimenti {id, net, role}: a ognuno si aggiunge person, letta dalla Rete; `via` (id di una persona) diventa anche via_person.
+   *  Le voci nel formato vecchio {id, name, role, email, phone} (schede salvate prima del 13.11.2026) restano come sono, con legacy: true. */
+  async resolveContacts(v) {
+    const refs = Array.isArray(v.contacts_list) ? v.contacts_list : [];
+    const needs = refs.some(c => c && typeof c.net === 'string' && c.net) || (typeof v.via === 'string' && v.via);
+    if (!refs.length && !needs) return v;
+    let people = null;
+    if (needs) {
+      try { people = await this.network(); } catch (e) { v.network_error = e.code || 'error'; }
+    }
+    const resolve = netId => {
+      if (!people) return { unresolved: true };
+      if (!people.has(netId)) return { missing_in_network: true };
+      const p = people.get(netId);
+      return p ? Dossier.personView(p) : { unreadable: true };
+    };
+    if (Array.isArray(v.contacts_list)) {
+      v.contacts_list = refs.map(c => {
+        if (!c || typeof c !== 'object') return c;
+        if (typeof c.net === 'string' && c.net) return { ...c, person: resolve(c.net) };
+        return { ...c, legacy: true };
+      });
+    }
+    if (typeof v.via === 'string' && v.via) v.via_person = resolve(v.via);
+    return v;
+  }
+
+  /** Preferenze di lavoro (documento «prefs» del Profilo), decifrate e ripulite secondo lo schema. Sola lettura. */
+  async preferences() {
+    const j = await this.api.call('doc_list');
+    const doc = (j.docs || []).filter(x => x.kind === PREFS_KIND).sort((a, b) => (b.created_at || 0) - (a.created_at || 0))[0];
+    if (!doc) return { saved: false, message: "L'utente non ha ancora salvato preferenze di lavoro: si impostano in Jobdossiers, nel Profilo, scheda «Preferenze»." };
+    const k = await this.dek();
+    const bytes = await this.api.bytes('doc_get', { id: doc.id }, { max: 1024 * 1024 });
+    let raw;
+    try { raw = JSON.parse(new TextDecoder().decode(await decBytes(k, bytes, AAD.doc))); }
+    catch { throw new ApiError('unreadable', { message: 'Documento delle preferenze non decifrabile o non in formato JSON' }); }
+    const { prefs, dropped } = cleanPrefs(raw);
+    const out = { saved: true, preferences: prefs };
+    if (dropped.length) out.dropped_fields = dropped;
+    return out;
   }
 
   async findDuplicates(cand) {
@@ -132,7 +196,16 @@ export class Dossier {
       if (PROTECTED.has(k)) throw new ApiError('invalid_value', { message: `Il campo ${k} non si scrive direttamente (le note si aggiungono con jd_add_note)` });
       if (JSON.stringify(v ?? null).length > MAX_FIELD) throw new ApiError('invalid_value', { message: `Il campo ${k} è troppo lungo` });
     }
+    if ('contacts_list' in fields) Dossier.checkContacts(fields.contacts_list);
     return fields;
+  }
+
+  /** Dal 13.11.2026 contacts_list contiene solo riferimenti {id, net, role}: nome e recapiti stanno nella Rete, che questo server non modifica. */
+  static checkContacts(list) {
+    const ok = Array.isArray(list) && list.every(c => c && typeof c === 'object' && !Array.isArray(c)
+      && typeof c.net === 'string' && c.net && Object.keys(c).every(k => ['id', 'net', 'role'].includes(k))
+      && ['id', 'role'].every(k => c[k] === undefined || typeof c[k] === 'string'));
+    if (!ok) throw invalid('contacts_list contiene solo riferimenti {id, net, role} a persone già nella Rete dell\'utente (net = id della persona): nome e recapiti stanno nella Rete, non nella scheda');
   }
 
   static checkPlain({ automation, rav } = {}) {

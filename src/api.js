@@ -45,10 +45,32 @@ export function createApi({ base = 'https://jobdossiers.ch', token, fetchImpl = 
     }
     const j = await r.json().catch(() => ({}));
     if (r.ok && j.ok !== false) return j;
-    const code = r.status === 401 ? 'unauthorized' : r.status === 429 ? 'rate_limited' : j.error || 'http_' + r.status;
-    const message = r.status === 401 ? 'Chiave rifiutata, revocata o piano Plus scaduto' : j.message;
-    const ra = r.status === 429 ? Number.parseInt(r.headers?.get?.('retry-after') ?? '', 10) : NaN;
-    throw new ApiError(code, { status: r.status, message, version: j.version, retryAfter: Number.isFinite(ra) && ra >= 0 ? ra : undefined });
+    throw failure(r, j);
   }
-  return { call, base: root };
+
+  /** GET che risponde con byte (doc_get: file cifrato IV || ct || tag). params: parametri in più della query; max: byte al massimo. */
+  async function bytes(action, params = {}, { max = 8 * 1024 * 1024 } = {}) {
+    const q = new URLSearchParams({ a: action, ...params });
+    let r;
+    try {
+      r = await fetchImpl(`${root}/api.php?${q}`, {
+        method: 'GET', headers: { 'X-JD-Agent': token, Accept: 'application/octet-stream' },
+        redirect: 'error', signal: AbortSignal.timeout(timeoutMs),
+      });
+    } catch (e) {
+      throw new ApiError('network', { message: 'Rete non raggiungibile (' + (e?.cause?.code || e?.name || 'errore') + ')' });
+    }
+    if (!r.ok) throw failure(r, await r.json().catch(() => ({})));
+    const u8 = new Uint8Array(await r.arrayBuffer());
+    if (u8.length > max) throw new ApiError('too_large', { message: 'Documento troppo grande' });
+    return u8;
+  }
+  return { call, bytes, base: root };
+}
+
+function failure(r, j) {
+  const code = r.status === 401 ? 'unauthorized' : r.status === 429 ? 'rate_limited' : j.error || 'http_' + r.status;
+  const message = r.status === 401 ? 'Chiave rifiutata, revocata o piano Plus scaduto' : j.message;
+  const ra = r.status === 429 ? Number.parseInt(r.headers?.get?.('retry-after') ?? '', 10) : NaN;
+  return new ApiError(code, { status: r.status, message, version: j.version, retryAfter: Number.isFinite(ra) && ra >= 0 ? ra : undefined });
 }
