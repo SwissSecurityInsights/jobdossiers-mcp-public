@@ -5,7 +5,8 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import { parseKey, openDek, encObj, decObj, encBytes, decBytes, wrapDekForAgent, AAD } from '../src/crypto.js';
 import { createApi, ApiError } from '../src/api.js';
 import { Dossier } from '../src/client.js';
-import { normUrl, platformIds, findDuplicates } from '../src/dedupe.js';
+import { createRequire } from 'node:module';
+import { normUrl, normCompany, roleKeys, platformIds, findDuplicates } from '../src/dedupe.js';
 import { makeFixture, startMock } from './helpers.mjs';
 
 const NOW = () => new Date('2026-10-26T10:00:00Z');
@@ -69,6 +70,52 @@ test('dedupe: URL, ID di piattaforma, azienda+ruolo con recruiter', () => {
   assert.deepEqual(findDuplicates(items, { company: 'Beispiel AG', role: 'Head of SOC' }), []);
   assert.deepEqual(findDuplicates(items, { urls: ['https://www.example.org/job/1/'] }).map(x => x.id), ['b']);
   assert.deepEqual(findDuplicates(items, { text: 'https://www.linkedin.com/jobs/view/1234567890/' }).map(x => x.id), ['c']);
+});
+
+/** Casi del sito (20.11.2026): stesso risultato di public/assets/dedupe.js. */
+const SITE_CASES = [
+  ['url', { row: { id: 'u', status: 'sent' }, d: { company: 'X', role: 'Y', job_url: 'https://careers.rotondo.example/jobs/42' } },
+    { urls: ['https://www.Careers.Rotondo.example/Jobs/42/?utm_source=x&fbclid=y'] }],
+  ['platform_id', { row: { id: 'l', status: 'sent' }, d: { company: 'X', role: 'Y', job_url: 'https://www.linkedin.com/jobs/view/head-at-belmonte-3912345678' } },
+    { urls: ['https://ch.linkedin.com/jobs/view/3912345678/?trk=1'] }],
+  ['company_role', { row: { id: 'c', status: 'sent' }, d: { company: 'Rotondo Logistics AG', role: 'Head of Supply Chain (m/w/d)' } },
+    { company: 'Rotondo Logistics SA', role: 'Head of Supply Chain' }],
+];
+
+test('dedupe: percorso dell\'URL in minuscolo e parametri come «k=v» ordinati, come il sito', () => {
+  assert.equal(normUrl('https://www.Careers.Rotondo.example/Jobs/42/?utm_source=x&fbclid=y'), 'careers.rotondo.example/jobs/42');
+  assert.equal(normUrl('https://careers.rotondo.example/jobs/42'), 'careers.rotondo.example/jobs/42');
+  assert.equal(normUrl('https://x.ch/A/B/#Frammento'), 'x.ch/a/b');
+  assert.equal(normUrl(' https://x.ch/a?b=2&B=1&a=1&gclid=z&mc_cid=q '), 'x.ch/a?B=1&a=1&b=2');
+  assert.equal(normUrl('https://x.ch/a?k=2&k=1'), 'x.ch/a?k=1&k=2');
+  for (const [reason, item, cand] of SITE_CASES) {
+    assert.deepEqual(findDuplicates([item], cand), [{ id: item.row.id, company: item.d.company, role: item.d.role, status: 'sent', reason }], reason);
+  }
+});
+
+/** Casi in cui il server prima differiva dal sito: note nel vecchio campo `notes`, testi non stringa, impresa non stringa. */
+const EDGE_CASES = [
+  [{ row: { id: 'n', status: 'sent' }, d: { company: 'X', role: 'Y', notes: 'LinkedIn 3912345678' } }, { text: 'linkedin 3912345678' }],
+  [{ row: { id: 'm', status: 'sent' }, d: { company: 'X', role: 'Y', note_log: [{ text: 3912345678 }, null, { text: 'LinkedIn 3912345679' }] } }, { text: 'linkedin 3912345678 linkedin 3912345679' }],
+  [{ row: { id: 'k', status: 'sent' }, d: { company: 42, role: 'Y', job_url: 'https://x.ch/a' } }, { urls: ['https://x.ch/A/'] }],
+];
+
+test('dedupe: le note del vecchio campo notes non contano, come nel sito', () => {
+  assert.deepEqual(findDuplicates([EDGE_CASES[0][0]], EDGE_CASES[0][1]), []);
+  assert.deepEqual(findDuplicates([EDGE_CASES[1][0]], EDGE_CASES[1][1]).map(x => x.reason), ['platform_id']);
+  assert.deepEqual(findDuplicates([EDGE_CASES[2][0]], EDGE_CASES[2][1]), [{ id: 'k', company: '42', role: 'Y', status: 'sent', reason: 'url' }]);
+  assert.deepEqual(findDuplicates([EDGE_CASES[2][0]], null), []);
+});
+
+const DEDUPE_SITE = fileURLToPath(new URL('../../jobdossiers.ch/public/assets/dedupe.js', import.meta.url));
+test('dedupe: stessi risultati di public/assets/dedupe.js del sito', { skip: !existsSync(DEDUPE_SITE) && 'repo jobdossiers.ch non presente' }, async () => {
+  const S = createRequire(import.meta.url)(DEDUPE_SITE);
+  const urls = ['https://www.Careers.Rotondo.example/Jobs/42/?utm_source=x&fbclid=y', 'https://x.ch/a?b=2&B=1&a=1&trk=9#f', 'HTTPS://WWW.X.CH/Ä/', 'non un url'];
+  for (const u of urls) assert.equal(normUrl(u), S.normUrl(u), u);
+  for (const r of ['Head of Supply Chain (m/w/d)', 'Chief Information Security Officer (CISO) 80-100%']) assert.deepEqual(roleKeys(r), S.roleKeys(r), r);
+  for (const c of ['Rotondo Logistics SA', 'Beispiel AG (via Muster)', 'Zürich Versicherung Schweiz']) assert.equal(normCompany(c), S.normCompany(c), c);
+  for (const [, item, cand] of SITE_CASES) assert.deepEqual(findDuplicates([item], cand), S.find([item], cand));
+  for (const [item, cand] of EDGE_CASES) assert.deepEqual(findDuplicates([item], cand), S.find([item], cand), JSON.stringify(item.d));
 });
 
 test('lista compatta e filtro incomplete', async () => {

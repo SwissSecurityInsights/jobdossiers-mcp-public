@@ -27,7 +27,7 @@ test('protocollo MCP su stdio: stdout pulito, chiave mai in output, uscita pulit
     assert.equal(msgs.length, 6);
     const by = Object.fromEntries(msgs.map(m => [m.id, m]));
     assert.equal(by[1].result.protocolVersion, '2025-06-18');
-    assert.deepEqual(by[2].result.tools.map(t => t.name).sort(), ['jd_add_note', 'jd_agenda', 'jd_agenda_save', 'jd_create', 'jd_docs', 'jd_find_duplicates', 'jd_get', 'jd_list', 'jd_quota', 'jd_set_status', 'jd_update', 'jd_upload_doc']);
+    assert.deepEqual(by[2].result.tools.map(t => t.name).sort(), ['jd_add_note', 'jd_agenda', 'jd_agenda_save', 'jd_create', 'jd_docs', 'jd_find_duplicates', 'jd_get', 'jd_list', 'jd_preferences', 'jd_quota', 'jd_set_status', 'jd_update', 'jd_upload_doc']);
     const list = JSON.parse(by[3].result.content[0].text);
     assert.equal(list.ok, true); assert.equal(list.rows[0].company, 'Acme Bank AG');
     assert.equal(by[4].error.code, -32602);
@@ -46,7 +46,7 @@ test('senza chiave: tools/list funziona, la chiamata dà un errore chiaro', asyn
   child.stdin.end();
   await new Promise(r => child.on('close', r));
   const m = out.trim().split('\n').map(l => JSON.parse(l));
-  assert.equal(m[0].result.tools.length, 12);
+  assert.equal(m[0].result.tools.length, 13);
   assert.equal(m[1].result.isError, true);
   assert.match(m[1].result.content[0].text, /Chiave non trovata/);
 });

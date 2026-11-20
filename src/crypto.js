@@ -9,7 +9,7 @@ const TD = new TextDecoder();
 const AES = { name: 'AES-GCM', length: 256 };
 const B64U = /^[A-Za-z0-9_-]{43}$/;
 
-export const AAD = Object.freeze({ app: 'jd1:app', docmeta: 'jd1:docmeta', doc: 'jd1:doc', agenda: 'jd1:agenda' });
+export const AAD = Object.freeze({ app: 'jd1:app', docmeta: 'jd1:docmeta', doc: 'jd1:doc', agenda: 'jd1:agenda', net: 'jd1:net' });
 
 export class KeyFormatError extends Error {
   constructor() { super('Formato della chiave non valido: atteso jda1.<token>.<segreto>'); this.name = 'KeyFormatError'; }
