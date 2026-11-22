@@ -112,4 +112,20 @@ final class ClientsTests: XCTestCase {
         XCTAssertEqual(KeyStore.deleteCommand(), "delete-generic-password -s \"jobdossiers-mcp\" -a \(a)\n")
         XCTAssertEqual(KeyStore.quote(#"a"b\c"#), #""a\"b\\c""#)
     }
+
+    /// Stato dell'estensione: dipende solo dai browser presenti e dal path scritto nei loro manifest.
+    func testStatoEstensioneBrowser() throws {
+        let home = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: home) }
+        XCTAssertEqual(Browsers.state(command: "/a/server", home: home), .notInstalled)
+        let edge = Browsers.all[1].dir
+        try FileManager.default.createDirectory(at: home.appendingPathComponent(edge), withIntermediateDirectories: true)
+        XCTAssertEqual(Browsers.state(command: "/a/server", home: home), .notConfigured)
+        let m = Browsers.manifestURL(edge, home: home)
+        try FileManager.default.createDirectory(at: m.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try Data(#"{"name":"ch.jobdossiers.mcp","path":"/a/server","type":"stdio"}"#.utf8).write(to: m)
+        XCTAssertEqual(Browsers.state(command: "/a/server", home: home), .configured)
+        XCTAssertEqual(Browsers.state(command: "/b/server", home: home), .outdated)
+        XCTAssertEqual(Browsers.present(home: home), ["Microsoft Edge"])
+    }
 }

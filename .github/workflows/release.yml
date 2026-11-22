@@ -1,6 +1,6 @@
 name: Release
 # Al tag v* costruisce da questo codice tutto ciò che si installa e lo pubblica nella release del tag:
-# app per Mac (Apple silicon), installer e zip per Windows, server MCP per macOS, Windows e Linux, SHA256SUMS e attestazioni di provenienza.
+# app per Mac (Apple silicon), installer e zip per Windows, estensione per Chrome ed Edge, server MCP per macOS, Windows e Linux, SHA256SUMS e attestazioni di provenienza.
 # Avviato a mano (workflow_dispatch) fa solo la prova: costruisce e carica gli artefatti, senza release.
 on:
   push:
@@ -58,8 +58,9 @@ jobs:
           node scripts/build.mjs linux-x64
           v=$(node -p "require('./package.json').version")
           mv dist/Jobdossiers-win-x64.zip "dist/Jobdossiers-$v-win-x64.zip"
+          (cd extension && zip -qr "../dist/Jobdossiers-$v-estensione-browser.zip" .)
       - uses: actions/upload-artifact@v4
-        with: { name: windows, path: "dist/Jobdossiers-Setup-*-x64.exe\ndist/Jobdossiers-*-win-x64.zip\ndist/jobdossiers-mcp-windows-x64.exe\ndist/jobdossiers-mcp-linux-x64", if-no-files-found: error }
+        with: { name: windows, path: "dist/Jobdossiers-Setup-*-x64.exe\ndist/Jobdossiers-*-win-x64.zip\ndist/Jobdossiers-*-estensione-browser.zip\ndist/jobdossiers-mcp-windows-x64.exe\ndist/jobdossiers-mcp-linux-x64", if-no-files-found: error }
   publish:
     needs: [mac, windows]
     if: startsWith(github.ref, 'refs/tags/v')
@@ -84,6 +85,7 @@ jobs:
 
           - **Mac (Apple silicon):** `Jobdossiers-*-mac-arm64.zip`, da estrarre e spostare in Applicazioni.
           - **Windows:** `Jobdossiers-Setup-*-x64.exe` (installer per l'utente, senza diritti di amministratore) oppure lo zip portatile.
+          - **Estensione per Chrome ed Edge (prototipo):** `Jobdossiers-*-estensione-browser.zip`, da estrarre e caricare in Estensioni → modalità sviluppatore → Carica estensione non pacchettizzata; serve l'app (Mac o Windows) installata e collegata ai browser.
           - **Solo server MCP:** `jobdossiers-mcp-<sistema>`, per configurarlo a mano in un client MCP.
 
           Verifica: `shasum -a 256 -c SHA256SUMS` e `gh attestation verify <file> --repo ${{ github.repository }}`.

@@ -103,6 +103,27 @@ final class AppModel: ObservableObject {
         refreshClients()
     }
 
+    // MARK: estensione per Chrome ed Edge
+
+    @Published private(set) var browserState: ClientState = .notInstalled
+    @Published private(set) var browserMessage: String?
+
+    func refreshBrowsers() {
+        guard let cmd = clientCommand else { browserState = .notInstalled; return }
+        browserState = Browsers.state(command: cmd)
+    }
+
+    func configureBrowsers(_ on: Bool) {
+        guard let cmd = clientCommand else { return }
+        do {
+            try Browsers.run(cmd, on ? "--browser-install" : "--browser-remove")
+            browserMessage = on ? "Collegato a \(Browsers.present().joined(separator: " e ")). Ora carica l'estensione nel browser." : "Collegamento con i browser tolto."
+        } catch {
+            browserMessage = error.localizedDescription
+        }
+        refreshBrowsers()
+    }
+
     func copyClaudeCodeCommand() {
         guard let cmd = clientCommand else { return }
         NSPasteboard.general.clearContents()
