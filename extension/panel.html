@@ -9,13 +9,15 @@
 </head>
 <body>
   <header>
-    <div><strong>Jobdossiers</strong> <span id="conn" class="muted">…</span></div>
+    <div><strong>Jobdossiers</strong> <span id="ver" class="muted"></span> <span id="conn" class="muted">…</span></div>
     <button id="reread" type="button" class="link">Rileggi la pagina</button>
   </header>
   <p id="msg" class="msg" hidden></p>
+  <p id="notjob" hidden><button id="use-anyway" type="button" class="link">Usa comunque questa pagina</button></p>
+  <p id="auto-hint" hidden><button id="auto-hint-btn" type="button" class="link">Attiva la lettura automatica</button>: il pannello verificherà ogni pagina che apri, a ogni caricamento.</p>
   <form id="f" hidden>
-    <label>Impresa <input name="company" required maxlength="300"></label>
-    <label>Ruolo <input name="role" required maxlength="300"></label>
+    <label>Ruolo <span id="src-role" class="muted"></span> <input name="role" required maxlength="300"></label>
+    <label>Impresa <span id="src-company" class="muted"></span> <input name="company" required maxlength="300"></label>
     <div class="row">
       <label>Luogo <input name="employer_zip_city" maxlength="300" placeholder="6900 Lugano"></label>
       <label class="cc">Paese <input name="employer_country" maxlength="2" placeholder="CH"></label>
@@ -34,7 +36,7 @@
   </form>
   <footer>
     <button id="auto" type="button" class="link">Leggi automaticamente ogni pagina</button>
-    <p class="muted small">Senza lettura automatica il pannello legge una pagina solo quando premi l'icona Jobdossiers (o Alt+Shift+J). Il testo si cifra su questo computer prima di partire. Suggerimento: seleziona il testo dell'annuncio prima di premere l'icona.</p>
+    <p class="muted small">Senza lettura automatica il pannello verifica e legge una pagina solo quando premi l'icona Jobdossiers (o Alt+Shift+J); con la lettura automatica a ogni caricamento. Il testo si cifra su questo computer prima di partire. Suggerimento: seleziona il testo dell'annuncio prima di premere l'icona.</p>
   </footer>
 </body>
 </html>

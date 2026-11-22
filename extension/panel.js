@@ -4,28 +4,14 @@
  * Il server (jobdossiers-mcp, registrato come host di native messaging «ch.jobdossiers.mcp») controlla i doppioni, cifra e invia: qui non c'è nessuna chiave.
  * I dati della pagina finiscono solo in campi di testo (value, textContent), mai in HTML. */
 import { fields } from './parse.js';
+import { grab } from './grab.js';
+import { detectJob } from './detect.js';
 import { jobFacts, compare } from './match.js';
 
 const HOST = 'ch.jobdossiers.mcp';
 const $ = s => document.querySelector(s);
 const form = $('#f');
 let seq = 0;
-
-/** Dati grezzi della pagina. Gira dentro la pagina: deve bastare a sé stessa. */
-function grab() {
-  const text = el => (el && el.innerText ? el.innerText : '').trim();
-  const meta = n => document.querySelector(`meta[property="${n}"], meta[name="${n}"]`)?.content || '';
-  const desc = document.querySelector('#job-details, .jobs-description__content, .description__text, [class*="job-description"], [data-testid*="description"]');
-  const main = document.querySelector('main, article, [role="main"]') || document.body;
-  return {
-    url: location.href, title: document.title, h1: text(document.querySelector('h1')),
-    og_title: meta('og:title'), og_site: meta('og:site_name'),
-    ld: [...document.querySelectorAll('script[type="application/ld+json"]')].slice(0, 20).map(s => s.textContent.slice(0, 200000)),
-    li_company: text(document.querySelector('.job-details-jobs-unified-top-card__company-name, .topcard__org-name-link')),
-    selection: String(getSelection() || '').trim().slice(0, 100000),
-    desc: text(desc).slice(0, 100000), main: text(main).slice(0, 100000),
-  };
-}
 
 const htmlToText = html => new DOMParser().parseFromString(String(html), 'text/html').body.innerText || '';
 
@@ -149,15 +135,20 @@ async function autoState() {
   return autoOn;
 }
 
-function noAccess(text) {
+function noAccess(text, { askAuto = false } = {}) {
   form.hidden = true;
   lastRaw = null; renderMatch();
   $('#dups').hidden = true;
+  $('#notjob').hidden = true;
   show(text, 'info');
+  $('#auto-hint').hidden = !askAuto || autoOn;
 }
 
-/** Legge la scheda attiva di questa finestra. Solo l'ultima lettura avviata aggiorna il pannello. */
-async function read() {
+let override = '';          // pagina che l'utente ha deciso di usare anche se non sembra un annuncio
+
+/** Verifica la scheda attiva (è un annuncio?) e solo allora ne estrae i campi. Solo l'ultima lettura avviata aggiorna il pannello.
+ *  attempt: nuovi tentativi mentre la pagina carica ancora i contenuti (siti che si compongono dopo il caricamento, come LinkedIn). */
+async function read(attempt = 0) {
   const mine = ++reading;
   const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
   if (!tab) return;
@@ -166,22 +157,42 @@ async function read() {
   catch {
     if (mine !== reading) return;
     if (tab.url && !/^https?:/i.test(tab.url)) return noAccess('Apri la pagina di un annuncio.');
-    return noAccess("Per leggere questa pagina premi l'icona Jobdossiers nella barra degli strumenti (o Alt+Shift+J).");
+    return noAccess("Per leggere questa pagina premi l'icona Jobdossiers nella barra degli strumenti (o Alt+Shift+J).", { askAuto: true });
   }
   if (mine !== reading || !raw) return;
+  const check = detectJob(raw);
+  if (check.kind !== 'job' && check.kind !== 'probable' && raw.url !== override) {
+    if (attempt < 2) { setTimeout(() => { if (mine === reading) read(attempt + 1); }, 1200); }      // il contenuto può arrivare dopo
+    form.hidden = true; lastRaw = null; renderMatch(); $('#dups').hidden = true; $('#auto-hint').hidden = true;
+    show(check.kind === 'list' ? 'Questa pagina è un elenco di annunci: apri un annuncio per salvarlo.' : 'Questa pagina non sembra un annuncio di lavoro.', 'warn');
+    $('#notjob').hidden = false;
+    return;
+  }
+  $('#notjob').hidden = true; $('#auto-hint').hidden = true;
   lastRaw = raw;
   const f = fields(raw, htmlToText);
   form.reset();
   for (const [k, v] of Object.entries(f)) if (form.elements[k]) form.elements[k].value = v;
   $('#src').textContent = f.job_desc ? `(${f.source}, ${f.job_desc.length} caratteri)` : '';
+  $('#src-role').textContent = f.sources.role ? `(${f.sources.role})` : '(non trovato)';
+  $('#src-company').textContent = f.sources.company ? `(${f.sources.company})` : '(non trovata)';
   const btn = $('#save');
   btn.textContent = 'Salva in Jobdossiers'; btn.disabled = !connected;
   form.hidden = false;
   renderMatch();
-  if (connected) { show(''); await checkDuplicates(); }
+  const note = check.kind === 'probable' ? `Sembra un annuncio (${check.reason}): controlla i campi.` : raw.url === override && check.kind !== 'job' ? 'Pagina usata come annuncio su tua scelta: controlla i campi.' : '';
+  if (connected) { show(note, note ? 'warn' : ''); await checkDuplicates(); }
+  // le pagine che si compongono dopo il caricamento: se manca ancora il titolo, si riprova
+  if (!f.role && attempt < 2) setTimeout(() => { if (mine === reading) read(attempt + 1); }, 1200);
 }
 
-$('#reread').addEventListener('click', read);
+$('#use-anyway').addEventListener('click', async () => {
+  const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+  override = tab?.url || ''; read();
+});
+$('#auto-hint-btn').addEventListener('click', () => $('#auto').click());
+
+$('#reread').addEventListener('click', () => read());
 $('#auto').addEventListener('click', async () => {
   // permissions.request vuole il gesto dell'utente: va chiamato subito, senza await prima
   const req = autoOn ? chrome.permissions.remove(SITES) : chrome.permissions.request(SITES);
@@ -192,10 +203,12 @@ $('#auto').addEventListener('click', async () => {
 // clic sull'icona o scorciatoia con il pannello già aperto (background.js)
 chrome.runtime.onMessage.addListener(m => { if (m?.type === 'leggi') read(); });
 // cambio di scheda o pagina: si legge se c'è il permesso; altrimenti il pannello lo dice
-chrome.tabs.onActivated.addListener(read);
-chrome.tabs.onUpdated.addListener((tabId, info, tab) => { if (info.status === 'complete' && tab.active) read(); });
+chrome.tabs.onActivated.addListener(() => read());
+// ogni caricamento, e ogni cambio di indirizzo senza ricaricare (LinkedIn e altri siti che cambiano annuncio nella stessa pagina): nuova verifica
+chrome.tabs.onUpdated.addListener((tabId, info, tab) => { if (tab.active && (info.status === 'complete' || info.url)) read(); });
 
 async function main() {
+  $('#ver').textContent = 'v' + chrome.runtime.getManifest().version;      // la versione dell'estensione caricata nel browser
   await autoState();
   if (await connect()) await loadPrefs();
   await read();
