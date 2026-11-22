@@ -42,6 +42,25 @@ Check ($tools.Count -eq 13) "server: $($tools.Count) tool (attesi 13)"
 $chk = (& $exe --check 2>&1 | Out-String)
 Check ($LASTEXITCODE -eq 1 -and $chk -match 'Chiave non trovata') "server senza chiave: errore chiaro, nessun crash"
 
+# 2b. Estensione per Chrome ed Edge: host registrato per entrambi, e il server risponde nel protocollo del browser (lunghezza + JSON, stdout binario)
+$hostJson = Join-Path $dir 'ch.jobdossiers.mcp.json'
+$hostKeys = 'HKCU:\Software\Google\Chrome\NativeMessagingHosts\ch.jobdossiers.mcp', 'HKCU:\Software\Microsoft\Edge\NativeMessagingHosts\ch.jobdossiers.mcp'
+foreach ($k in $hostKeys) { Check ((Get-ItemProperty $k -ErrorAction SilentlyContinue).'(default)' -eq $hostJson) "estensione: host registrato in $($k.Split('\')[2])" }
+$hm = Get-Content $hostJson -Raw | ConvertFrom-Json
+Check ($hm.path -eq $exe -and $hm.type -eq 'stdio' -and $hm.allowed_origins.Count -ge 1) "estensione: manifest dell'host punta al server"
+$psi = New-Object System.Diagnostics.ProcessStartInfo $exe
+$psi.Arguments = "$($hm.allowed_origins[0]) --parent-window=0"
+$psi.UseShellExecute = $false; $psi.RedirectStandardInput = $true; $psi.RedirectStandardOutput = $true
+$np = [System.Diagnostics.Process]::Start($psi)
+$body = [Text.Encoding]::UTF8.GetBytes('{"id":7,"action":"status"}')
+$np.StandardInput.BaseStream.Write([BitConverter]::GetBytes([uint32]$body.Length), 0, 4)
+$np.StandardInput.BaseStream.Write($body, 0, $body.Length); $np.StandardInput.Close()
+$ms = New-Object IO.MemoryStream; $np.StandardOutput.BaseStream.CopyTo($ms); $np.WaitForExit()
+$raw = $ms.ToArray()
+$len = if ($raw.Length -ge 4) { [BitConverter]::ToUInt32($raw, 0) } else { -1 }
+$resp = if ($len -eq $raw.Length - 4) { [Text.Encoding]::UTF8.GetString($raw, 4, $len) | ConvertFrom-Json } else { $null }
+Check ($null -ne $resp -and $resp.id -eq 7 -and $resp.ok -eq $false -and $resp.message -match 'Chiave non trovata') "estensione: risposta nel protocollo del browser ($($raw.Length) byte)"
+
 # 3. App: splash, finestra delle impostazioni (--settings), istanza unica. Dati di prova per la disinstallazione:
 #    una configurazione di Claude Desktop con un altro server e la voce jobdossiers, e una chiave finta.
 New-Item -ItemType Directory -Force (Split-Path $claudeCfg), (Split-Path $keyFile) | Out-Null
@@ -69,5 +88,7 @@ $c = Get-Content $claudeCfg -Raw | ConvertFrom-Json
 Check ($null -eq $c.mcpServers.jobdossiers -and $null -ne $c.mcpServers.altro -and $c.globalShortcut -eq 'Ctrl+K') "disinstallazione: voce jobdossiers tolta da Claude Desktop, il resto conservato"
 Check (Test-Path "$claudeCfg.jobdossiers.bak") "disinstallazione: copia .jobdossiers.bak della configurazione"
 Check (Test-Path $keyFile) "disinstallazione silenziosa: la chiave resta"
+foreach ($k in $hostKeys) { Check (-not (Test-Path $k)) "disinstallazione: host dell'estensione tolto da $($k.Split('\')[2])" }
+Check (-not (Test-Path $hostJson)) "disinstallazione: manifest dell'host tolto"
 
 if ($fail) { "`n$fail controlli falliti"; exit 1 } else { "`nProva su Windows: tutto ok"; exit 0 }     # exit esplicito: altrimenti il passo eredita il codice del --check senza chiave

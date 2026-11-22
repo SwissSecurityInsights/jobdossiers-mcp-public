@@ -119,6 +119,32 @@ struct SettingsView: View {
                         .font(.caption).foregroundStyle(.secondary)
                 }
             }
+            Section("Estensione per Chrome ed Edge") {
+                HStack {
+                    VStack(alignment: .leading) {
+                        Text("Salva gli annunci dal browser")
+                        Text(describeBrowsers(model.browserState)).font(.caption).foregroundStyle(.secondary)
+                    }
+                    Spacer()
+                    switch model.browserState {
+                    case .notConfigured: Button("Configura") { model.configureBrowsers(true) }
+                    case .configured: Button("Rimuovi") { model.configureBrowsers(false) }
+                    case .outdated:
+                        Button("Aggiorna") { model.configureBrowsers(true) }
+                        Button("Rimuovi") { model.configureBrowsers(false) }
+                    default: EmptyView()
+                    }
+                }
+                if let dir = Browsers.extensionFolder {
+                    HStack {
+                        Text("Prototipo: nel browser apri Estensioni, attiva la modalità sviluppatore e carica questa cartella.")
+                            .font(.caption).foregroundStyle(.secondary)
+                        Spacer()
+                        Button("Mostra cartella") { NSWorkspace.shared.activateFileViewerSelecting([dir]) }
+                    }
+                }
+                if let m = model.browserMessage { Text(m).font(.caption) }
+            }
             Section("Server per il controllo") {
                 LabeledContent("In uso", value: model.resolvedServer ?? "non trovato")
                 HStack {
@@ -135,6 +161,7 @@ struct SettingsView: View {
             NSApp.activate(ignoringOtherApps: true)
             model.refreshLoginStatus()
             model.refreshClients()
+            model.refreshBrowsers()
         }
         .confirmationDialog("Eliminare la chiave dal Portachiavi?", isPresented: $confirmDelete) {
             Button("Elimina", role: .destructive) {
@@ -154,6 +181,16 @@ struct SettingsView: View {
         case .configured?: return "Configurato"
         case .outdated?: return "Punta a un altro server: da aggiornare"
         case .unreadable(let m)?: return m
+        }
+    }
+
+    private func describeBrowsers(_ s: ClientState) -> String {
+        switch s {
+        case .notInstalled: return "Né Chrome né Edge trovati (avviali almeno una volta)"
+        case .notConfigured: return "Non collegato"
+        case .configured: return "Collegato: " + Browsers.present().joined(separator: ", ")
+        case .outdated: return "Punta a un altro server: da aggiornare"
+        case .unreadable(let m): return m
         }
     }
 

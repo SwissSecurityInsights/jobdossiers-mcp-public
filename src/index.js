@@ -6,6 +6,7 @@ import { buildTools } from './tools.js';
 import { createServer, serveStdio } from './mcp.js';
 import { loadKey, saveKey } from './store.js';
 import { runCheck } from './check.js';
+import { nativeOrigin, serveNative, installHost, removeHost, hostPath } from './native.js';
 
 const HELP = `jobdossiers-mcp ${pkg.version}
 Server MCP locale per Jobdossiers (cifratura end-to-end: il segreto resta su questo computer).
@@ -14,6 +15,8 @@ Server MCP locale per Jobdossiers (cifratura end-to-end: il segreto resta su que
   jobdossiers-mcp --set-key  salva la chiave jda1.… nello store del sistema
   jobdossiers-mcp --check    prova in sola lettura: conteggi e nomi dei campi, nessun valore
   jobdossiers-mcp call <tool> [json|-]  esegue un solo tool e stampa il risultato JSON ("-" legge il JSON da stdin)
+  jobdossiers-mcp --browser-install [percorso]  registra questo eseguibile per l'estensione di Chrome ed Edge
+  jobdossiers-mcp --browser-remove [percorso]   toglie la registrazione
   jobdossiers-mcp --version
 
 Ambiente: JD_AGENT_KEY, JD_AGENT_KEY_FILE, JD_URL (predefinito https://jobdossiers.ch), JD_ALLOW_ANY_HOST=1,
@@ -37,8 +40,12 @@ async function getDossier() {
 }
 
 const arg = process.argv[2];
+const origin = nativeOrigin(process.argv);
 try {
-  if (arg === '--version' || arg === '-v') console.log(pkg.version);
+  if (origin) await serveNative({ origin, tools: buildTools(getDossier) });      // avviato da Chrome o Edge per l'estensione
+  else if (arg === '--browser-install') console.log(JSON.stringify(await installHost({ path: hostPath(process.argv[3]) }), null, 2));
+  else if (arg === '--browser-remove') console.log(JSON.stringify(await removeHost({ path: process.argv[3] || process.execPath }), null, 2));
+  else if (arg === '--version' || arg === '-v') console.log(pkg.version);
   else if (arg === '--help' || arg === '-h') console.log(HELP);
   else if (arg === '--set-key') { console.log('Chiave salvata in: ' + await saveKey()); console.log('Verifica con: jobdossiers-mcp --check'); }
   else if (arg === '--check') console.log(JSON.stringify(await runCheck(await getDossier()), null, 2));

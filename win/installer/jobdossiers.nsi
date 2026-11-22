@@ -58,6 +58,9 @@ Section "Jobdossiers"
   WriteRegDWORD HKCU "${UNINST}" "NoModify" 1
   WriteRegDWORD HKCU "${UNINST}" "NoRepair" 1
   WriteRegDWORD HKCU "${UNINST}" "EstimatedSize" 170000
+
+  ; Estensione per Chrome ed Edge: il server si registra come host di native messaging (manifest accanto all'eseguibile, chiavi HKCU).
+  nsExec::Exec '"$INSTDIR\jobdossiers-mcp.exe" --browser-install'
 SectionEnd
 
 Section "Uninstall"
@@ -65,6 +68,11 @@ Section "Uninstall"
   Sleep 800
   ; Toglie la voce jobdossiers dai client MCP che puntano a questo server e l'avvio all'accesso.
   ExecWait '"$INSTDIR\Jobdossiers.exe" --cleanup'
+  ; Toglie la registrazione per l'estensione di Chrome ed Edge (e comunque chiavi e manifest, se il server non parte).
+  nsExec::Exec '"$INSTDIR\jobdossiers-mcp.exe" --browser-remove'
+  DeleteRegKey HKCU "Software\Google\Chrome\NativeMessagingHosts\ch.jobdossiers.mcp"
+  DeleteRegKey HKCU "Software\Microsoft\Edge\NativeMessagingHosts\ch.jobdossiers.mcp"
+  Delete "$INSTDIR\ch.jobdossiers.mcp.json"
   MessageBox MB_YESNO|MB_ICONQUESTION "Eliminare anche la chiave per automazioni salvata su questo computer?$\r$\n$\r$\nPer revocarla davvero usa anche la pagina Account di Jobdossiers." /SD IDNO IDNO keepkey
     Delete "$APPDATA\jobdossiers-mcp\key.dpapi"
     RMDir "$APPDATA\jobdossiers-mcp"

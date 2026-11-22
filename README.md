@@ -10,6 +10,7 @@ Ogni release (pagina **Releases** del repo) contiene, costruiti da GitHub Action
 
 - `Jobdossiers-<versione>-mac-arm64.zip`: app per Mac con Apple silicon, server compreso;
 - `Jobdossiers-Setup-<versione>-x64.exe` e `Jobdossiers-<versione>-win-x64.zip`: app per Windows, con installer o portatile;
+- `Jobdossiers-<versione>-estensione-browser.zip`: estensione per Chrome ed Edge (prototipo, vedi sotto);
 - `jobdossiers-mcp-darwin-arm64`, `-darwin-x64`, `-windows-x64.exe`, `-linux-x64`: solo il server;
 - `SHA256SUMS` e le attestazioni di provenienza (`gh attestation verify <file> --repo <proprietario>/<repo>`).
 
@@ -50,6 +51,15 @@ Sposta l'app in Applicazioni prima di configurare i client: puntano al server de
 win/build.sh                 # da macOS o Linux: richiede .NET 10, bun e makensis; scrive l'installer e lo zip portatile in dist/
 dotnet test win/tests/Jobdossiers.Tests
 ```
+
+## Estensione per Chrome ed Edge (prototipo)
+
+`extension/` contiene un'estensione (Manifest V3, la stessa per Chrome ed Edge) che salva in Jobdossiers l'annuncio che stai guardando: clic sull'icona (o `Alt+Shift+J`), controllo dei campi trovati, «Salva in Jobdossiers». La scheda nasce `preparing`, come con `jd_create`.
+
+- L'estensione legge la pagina solo dopo il clic (permesso `activeTab`, nessun accesso permanente ai siti) e cerca i dati strutturati `JobPosting` (schema.org), poi il testo selezionato o quello della pagina. Tutto resta modificabile prima di salvare; i doppioni compaiono subito.
+- Non ha la chiave e non cifra: passa i dati al server locale con il native messaging del browser (host `ch.jobdossiers.mcp`). Il server accetta solo l'ID di questa estensione e solo tre azioni (`status`, `find_duplicates`, `create`), cifra qui e invia al portale.
+- Collegamento: l'app per Mac (sezione «Estensione per Chrome ed Edge», Configura) o l'installer per Windows registrano il server nei browser; a mano `jobdossiers-mcp --browser-install` (e `--browser-remove`). Su Mac scrive il manifest dell'host nelle cartelle di Chrome ed Edge, su Windows accanto all'eseguibile con le chiavi `HKCU\Software\…\NativeMessagingHosts`.
+- Finché non è negli store si carica come estensione non pacchettizzata: Estensioni → modalità sviluppatore → «Carica estensione non pacchettizzata» → la cartella `extension/` (nell'app per Mac: «Mostra cartella»). L'ID è fisso grazie alla chiave pubblica nel manifest; le versioni degli store avranno ID propri da aggiungere in `src/native.js`.
 
 ### Client configurati dalle app
 
