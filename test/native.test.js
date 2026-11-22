@@ -7,7 +7,7 @@ import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { PassThrough } from 'node:stream';
 import { encode, decoder, serveNative, installHost, removeHost, hostPath, nativeOrigin, ALLOWED_ORIGINS, HOST_NAME, ACTIONS } from '../src/native.js';
-import { decObj, AAD } from '../src/crypto.js';
+import { decObj, encObj, encBytes, AAD } from '../src/crypto.js';
 import { makeFixture, startMock } from './helpers.mjs';
 
 const INDEX = fileURLToPath(new URL('../src/index.js', import.meta.url));
@@ -25,7 +25,7 @@ test('native: messaggi a lunghezza prefissata, anche spezzati in più pezzi', ()
   assert.deepEqual(errs, ['too_large']);
   assert.equal(nativeOrigin(['node', 'x', ORIGIN, '--parent-window=0']), ORIGIN);
   assert.equal(nativeOrigin(['node', 'x', 'chrome-extension://evil/']), undefined);
-  assert.deepEqual(Object.keys(ACTIONS), ['status', 'find_duplicates', 'create']);
+  assert.deepEqual(Object.keys(ACTIONS), ['status', 'find_duplicates', 'create', 'preferences']);
 });
 
 test('native: un\'estensione con un altro ID riceve solo un errore', async () => {
@@ -85,6 +85,19 @@ test('native: stato, doppioni e creazione dal browser; azioni non ammesse rifiut
     assert.equal(d.job_desc, 'TESTO RISERVATO'); assert.equal(row.status, 'preparing');
     assert.match(d.note_log[0].text, /^\[agente\] Salvata dal browser/);
     assert.ok(!r.err.includes(fx.key.split('.')[2]), 'il segreto non compare su stderr');
+  } finally { await mock.close(); }
+});
+
+test('native: preferenze in sola lettura per il confronto nel pannello', async () => {
+  const fx = await makeFixture(), mock = await startMock(fx);
+  try {
+    const none = await runHost(fx, mock, [{ id: 1, action: 'preferences' }]);
+    assert.equal(none.got[0].ok, true); assert.equal(none.got[0].result.saved, false);
+    mock.files.set('p1', await encBytes(fx.dek, new TextEncoder().encode(JSON.stringify({ v: 1, home_city: 'Lugano', modes: ['hybrid', 'office'] })), AAD.doc));
+    mock.docs.push({ id: 'p1', kind: 'prefs', application_id: null, meta_enc: await encObj(fx.dek, { name: 'prefs.json' }, AAD.docmeta), size: 0, created_at: 1 });
+    const r = await runHost(fx, mock, [{ id: 2, action: 'preferences' }]);
+    assert.deepEqual(r.got[0].result, { saved: true, preferences: { v: 1, home_city: 'Lugano', modes: ['hybrid'] } }, 'valori fuori elenco tolti, come in jd_preferences');
+    assert.ok(mock.requests.every(x => !['app_save', 'doc_upload', 'agenda_save', 'net_save'].includes(x.action)), 'nessuna scrittura');
   } finally { await mock.close(); }
 });
 

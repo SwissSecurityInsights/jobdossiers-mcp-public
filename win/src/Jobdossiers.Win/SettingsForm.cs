@@ -19,12 +19,16 @@ sealed class SettingsForm : Form
         Font = new Font("Segoe UI", 9.5f); ClientSize = new Size(560, 640); MinimumSize = new Size(480, 400);
         var root = Column(); root.Dock = DockStyle.Fill; root.AutoScroll = true; root.Padding = new Padding(16); root.AutoSize = false;
 
+        var link = new Button { Text = "Collega a Jobdossiers", AutoSize = true };
+        link.Click += async (_, _) => await Link(link);
         var save = new Button { Text = "Salva", AutoSize = true };
         var del = new Button { Text = "Elimina chiave", AutoSize = true };
         save.Click += async (_, _) => await SaveKey(save);
         del.Click += (_, _) => DeleteKey();
         keyBox.KeyDown += async (_, e) => { if (e.KeyCode == Keys.Enter) { e.SuppressKeyPress = true; await SaveKey(save); } };
-        root.Controls.Add(Group("Chiave per automazioni", keyState, keyBox, Row(save, del), keyMsg,
+        root.Controls.Add(Group("Chiave per automazioni", keyState, link,
+            Note("Si apre il browser: accedi a jobdossiers.ch e conferma. La chiave arriva cifrata a questa app, senza copiarla."),
+            Lbl("Oppure incollala a mano:"), keyBox, Row(save, del), keyMsg,
             Note("La crei su jobdossiers.ch in Account → Chiave per automazioni (piano Plus). Viene cifrata con DPAPI per il tuo utente Windows e l'app non la rilegge mai.")));
 
         startup.Checked = Startup.Enabled;
@@ -54,6 +58,14 @@ sealed class SettingsForm : Form
         try { await KeyStore.SaveAsync(keyBox.Text); keyBox.Text = ""; Say(keyMsg, "Chiave salvata.", ok: true); app.KeyChanged(); }
         catch (Exception ex) { Say(keyMsg, ex.Message, ok: false); }
         finally { save.Enabled = true; RefreshAll(); }
+    }
+
+    async Task Link(Button link)
+    {
+        link.Enabled = false; link.Text = "In attesa del browser…";
+        try { var n = await ServerHost.LinkAsync(Environment.MachineName); Say(keyMsg, $"Collegato: {n} candidature. La chiave è salvata con DPAPI.", ok: true); app.KeyChanged(); }
+        catch (Exception ex) { Say(keyMsg, ex.Message, ok: false); }
+        finally { link.Enabled = true; link.Text = "Collega a Jobdossiers"; RefreshAll(); }
     }
 
     void DeleteKey()

@@ -39,6 +39,22 @@ final class AppModel: ObservableObject {
         lastCheck = Date()
     }
 
+    @Published private(set) var linking = false
+
+    /// Collega il Mac dal browser (login e consenso su jobdossiers.ch): ritorna l'esito da mostrare e se è andata bene.
+    func link() async -> (ok: Bool, message: String) {
+        linking = true
+        defer { linking = false }
+        do {
+            let n = try await Server.link(deviceName: Host.current().localizedName ?? "Mac")
+            hasKey = KeyStore.exists()
+            Task { await check() }
+            return (true, "Collegato: \(n) candidature. La chiave è nel Portachiavi.")
+        } catch {
+            return (false, error.localizedDescription)
+        }
+    }
+
     /// Ritorna un messaggio d'errore, nil se è andata bene.
     func saveKey(_ key: String) -> String? {
         do { try KeyStore.save(key) } catch { return error.localizedDescription }

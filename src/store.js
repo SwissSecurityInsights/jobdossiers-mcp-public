@@ -66,6 +66,29 @@ export function promptHidden(label) {
   });
 }
 
+/** Salva una chiave già nota (collegamento dal browser, src/link.js) nello stesso posto di --set-key. Mai su riga di comando:
+ *  su macOS passa a `security -i` dallo standard input. Ritorna dove è finita (mai la chiave). */
+export async function storeKey(text, { platform = process.platform, env = process.env } = {}) {
+  parseKey(text);
+  if (platform === 'darwin') {
+    const user = userInfo().username;
+    const q = s => '"' + String(s).replace(/\\/g, '\\\\').replace(/"/g, '\\"') + '"';
+    spawnSync('security', ['delete-generic-password', '-s', SERVICE, '-a', user], { stdio: 'ignore' });
+    const r = spawnSync('security', ['-i'], { input: `add-generic-password -s ${q(SERVICE)} -a ${q(user)} -l ${q(SERVICE)} -w ${q(text)}\n`, stdio: ['pipe', 'ignore', 'ignore'] });
+    if (r.status !== 0) throw new Error('Il portachiavi non ha salvato la chiave');
+    return 'portachiavi di macOS';
+  }
+  const file = defaultKeyFile(platform, env);
+  await mkdir(dirname(file), { recursive: true });
+  if (platform === 'win32') {
+    const enc = (await run('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', PS_ENCRYPT], { input: text + '\n' })).trim();
+    await writeFile(file, enc, { mode: 0o600 });
+    return `${file} (cifrato con DPAPI, valido solo per questo utente Windows)`;
+  }
+  await writeFile(file, text + '\n', { mode: 0o600 });
+  return `${file} (permessi 600)`;
+}
+
 /** Salva la chiave nello store del sistema. Ritorna una descrizione di dove è finita (mai la chiave). */
 export async function saveKey({ platform = process.platform } = {}) {
   if (platform === 'darwin') {
@@ -77,15 +100,5 @@ export async function saveKey({ platform = process.platform } = {}) {
     catch (e) { spawnSync('security', ['delete-generic-password', '-s', SERVICE, '-a', user], { stdio: 'ignore' }); throw e; }
     return 'portachiavi di macOS';
   }
-  const text = await promptHidden('Chiave jda1.… (non viene mostrata): ');
-  parseKey(text);
-  const file = defaultKeyFile(platform);
-  await mkdir(dirname(file), { recursive: true });
-  if (platform === 'win32') {
-    const enc = (await run('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', PS_ENCRYPT], { input: text + '\n' })).trim();
-    await writeFile(file, enc, { mode: 0o600 });
-    return `${file} (cifrato con DPAPI, valido solo per questo utente Windows)`;
-  }
-  await writeFile(file, text + '\n', { mode: 0o600 });
-  return `${file} (permessi 600)`;
+  return storeKey(await promptHidden('Chiave jda1.… (non viene mostrata): '), { platform });
 }

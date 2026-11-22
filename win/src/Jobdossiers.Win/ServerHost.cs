@@ -48,5 +48,25 @@ static class ServerHost
         return CheckResult.Parse(stdout) ?? throw new InvalidOperationException("Risposta del server non leggibile.");
     }
 
+    /// <summary>Collega il PC dal browser (`--login`, docs/collega-dispositivo.md): il server apre il browser, riceve la chiave cifrata per lui
+    /// e la salva con DPAPI. Qui arriva solo l'esito (numero di schede), mai la chiave.</summary>
+    public static async Task<int> LinkAsync(string deviceName)
+    {
+        var exe = File.Exists(Installed) ? Installed : Bundled;
+        if (!File.Exists(exe)) throw new InvalidOperationException("Server MCP non trovato.");
+        var psi = new ProcessStartInfo(exe) { RedirectStandardOutput = true, RedirectStandardError = true, RedirectStandardInput = true, UseShellExecute = false, CreateNoWindow = true, StandardOutputEncoding = Encoding.UTF8, StandardErrorEncoding = Encoding.UTF8 };
+        psi.ArgumentList.Add("--login"); psi.ArgumentList.Add("--name"); psi.ArgumentList.Add(deviceName);
+        using var p = Process.Start(psi) ?? throw new InvalidOperationException("Avvio del server non riuscito.");
+        p.StandardInput.Close();
+        var outTask = p.StandardOutput.ReadToEndAsync(); var errTask = p.StandardError.ReadToEndAsync();
+        using var cts = new CancellationTokenSource(TimeSpan.FromMinutes(6));
+        try { await p.WaitForExitAsync(cts.Token); }
+        catch (OperationCanceledException) { try { p.Kill(true); } catch (Exception) { } throw new TimeoutException("Nessuna risposta dal browser entro 6 minuti."); }
+        var stdout = await outTask; var stderr = await errTask;
+        if (p.ExitCode != 0) throw new InvalidOperationException(Short(stderr.Replace("Errore: ", "")));
+        try { return System.Text.Json.JsonDocument.Parse(stdout).RootElement.GetProperty("applications").GetInt32(); }
+        catch (Exception) { throw new InvalidOperationException("Risposta del server non leggibile."); }
+    }
+
     static string Short(string s) { s = s.Trim(); return s.Length > 300 ? s[..300] : (s == "" ? "Errore del server." : s); }
 }

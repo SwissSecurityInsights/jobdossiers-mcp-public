@@ -21,6 +21,12 @@
       <label class="cc">Paese <input name="employer_country" maxlength="2" placeholder="CH"></label>
     </div>
     <label>Indirizzo dell'annuncio <input name="job_url" required type="url" maxlength="2000"></label>
+    <section id="match" class="match" hidden>
+      <strong>Rispetto alle tue preferenze</strong>
+      <table><tbody id="match-rows"></tbody></table>
+      <p class="muted small">✓ corrisponde · ✗ non corrisponde · ? l'annuncio non lo dice. Confronto fatto qui, sul tuo computer.</p>
+    </section>
+    <p id="noprefs" class="muted small" hidden>Per confrontare l'annuncio con le tue preferenze impostale in Jobdossiers, Profilo → «Preferenze».</p>
     <label>Testo dell'annuncio <span id="src" class="muted"></span>
       <textarea name="job_desc" rows="12"></textarea></label>
     <div id="dups" class="dups" hidden></div>

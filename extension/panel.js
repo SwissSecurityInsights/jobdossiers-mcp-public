@@ -4,6 +4,7 @@
  * Il server (jobdossiers-mcp, registrato come host di native messaging «ch.jobdossiers.mcp») controlla i doppioni, cifra e invia: qui non c'è nessuna chiave.
  * I dati della pagina finiscono solo in campi di testo (value, textContent), mai in HTML. */
 import { fields } from './parse.js';
+import { jobFacts, compare } from './match.js';
 
 const HOST = 'ch.jobdossiers.mcp';
 const $ = s => document.querySelector(s);
@@ -78,6 +79,7 @@ async function checkDuplicates() {
 
 let timer = null;
 form.addEventListener('input', e => {
+  renderMatch();
   if (!['company', 'role', 'job_url'].includes(e.target.name)) return;
   clearTimeout(timer); timer = setTimeout(checkDuplicates, 600);
 });
@@ -103,6 +105,34 @@ const SITES = { origins: ['http://*/*', 'https://*/*'] };
 let reading = 0;
 let connected = false;
 let autoOn = false;
+let prefs = null;          // preferenze di lavoro (jd_preferences), lette una volta: null = non salvate o non leggibili
+let lastRaw = null;
+
+/** Preferenze dall'app (sola lettura). Restano in memoria nel pannello, non vengono salvate dall'estensione. */
+async function loadPrefs() {
+  const r = await native('preferences');
+  prefs = r.ok && r.result.saved ? r.result.preferences : null;
+}
+
+/** Tabella del confronto annuncio–preferenze; i testi entrano solo come textContent. */
+function renderMatch() {
+  const box = $('#match'), body = $('#match-rows');
+  body.replaceChildren();
+  $('#noprefs').hidden = !connected || !!prefs || !lastRaw;
+  if (!prefs || !lastRaw) { box.hidden = true; return; }
+  const rows = compare(prefs, jobFacts(lastRaw, values()));
+  const sign = { ok: '✓', no: '✗', unknown: '?' };
+  for (const r of rows) {
+    const tr = document.createElement('tr'); tr.className = r.result;
+    const a = document.createElement('td'); a.className = 'r'; a.textContent = sign[r.result];
+    const b = document.createElement('td'); b.textContent = r.label;
+    if (r.must) { const m = document.createElement('div'); m.className = 'must'; m.textContent = 'obbligatorio'; b.append(m); }
+    const c = document.createElement('td'); c.textContent = r.job;
+    if (r.note) { const n = document.createElement('div'); n.className = 'note'; n.textContent = r.note; c.append(n); }
+    tr.append(a, b, c); body.append(tr);
+  }
+  box.hidden = !rows.length;
+}
 
 /** Stato del collegamento con l'app (una volta all'apertura del pannello). */
 async function connect() {
@@ -121,6 +151,7 @@ async function autoState() {
 
 function noAccess(text) {
   form.hidden = true;
+  lastRaw = null; renderMatch();
   $('#dups').hidden = true;
   show(text, 'info');
 }
@@ -138,6 +169,7 @@ async function read() {
     return noAccess("Per leggere questa pagina premi l'icona Jobdossiers nella barra degli strumenti (o Alt+Shift+J).");
   }
   if (mine !== reading || !raw) return;
+  lastRaw = raw;
   const f = fields(raw, htmlToText);
   form.reset();
   for (const [k, v] of Object.entries(f)) if (form.elements[k]) form.elements[k].value = v;
@@ -145,6 +177,7 @@ async function read() {
   const btn = $('#save');
   btn.textContent = 'Salva in Jobdossiers'; btn.disabled = !connected;
   form.hidden = false;
+  renderMatch();
   if (connected) { show(''); await checkDuplicates(); }
 }
 
@@ -164,7 +197,7 @@ chrome.tabs.onUpdated.addListener((tabId, info, tab) => { if (info.status === 'c
 
 async function main() {
   await autoState();
-  await connect();
+  if (await connect()) await loadPrefs();
   await read();
 }
 
