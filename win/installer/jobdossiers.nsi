@@ -24,6 +24,9 @@ VIAddVersionKey /LANG=1040 "CompanyName" "Swiss Security Insights"
 VIAddVersionKey /LANG=1040 "LegalCopyright" "Swiss Security Insights"
 
 !define MUI_ABORTWARNING
+; Logo JD (assets/icon.svg), lo stesso dell'app; percorso relativo a questo script
+!define MUI_ICON "..\src\Jobdossiers.Win\app.ico"
+!define MUI_UNICON "..\src\Jobdossiers.Win\app.ico"
 !define MUI_WELCOMEPAGE_TEXT "Installa l'app di Jobdossiers per l'area di notifica e il server MCP che permette a Claude, ChatGPT e altri assistenti di leggere le tue candidature.$\r$\n$\r$\nL'installazione vale solo per il tuo utente e non richiede diritti di amministratore."
 !define MUI_FINISHPAGE_RUN "$INSTDIR\Jobdossiers.exe"
 !define MUI_FINISHPAGE_RUN_TEXT "Avvia Jobdossiers"
@@ -43,6 +46,9 @@ Section "Jobdossiers"
   ; Se un client MCP sta usando il server, il file è bloccato: NSIS propone di riprovare dopo averlo chiuso.
   File "${SRC}\jobdossiers-mcp.exe"
   File "${SRC}\LEGGIMI.txt"
+  ; Estensione per Chrome ed Edge, da caricare come estensione non pacchettizzata da questa cartella
+  RMDir /r "$INSTDIR\estensione"
+  File /r "${SRC}\estensione"
   WriteUninstaller "$INSTDIR\Disinstalla.exe"
 
   CreateShortcut "$SMPROGRAMS\Jobdossiers.lnk" "$INSTDIR\Jobdossiers.exe"
@@ -83,6 +89,7 @@ Section "Uninstall"
   Delete /REBOOTOK "$INSTDIR\Jobdossiers.exe"
   Delete /REBOOTOK "$INSTDIR\jobdossiers-mcp.exe"
   Delete "$INSTDIR\LEGGIMI.txt"
+  RMDir /r "$INSTDIR\estensione"
   Delete "$INSTDIR\Disinstalla.exe"
   RMDir /REBOOTOK "$INSTDIR"
   DeleteRegValue HKCU "${RUNKEY}" "Jobdossiers"

@@ -52,6 +52,19 @@ enum Browsers {
         }
     }
 
-    /// Cartella dell'estensione dentro l'app (build-app.sh), da caricare nel browser come estensione non pacchettizzata.
+    /// Cartella dell'estensione dentro l'app (build-app.sh).
     static var extensionFolder: URL? { Bundle.main.url(forResource: "estensione", withExtension: nil) }
+
+    /// Il browser non sceglie cartelle dentro un pacchetto .app: l'estensione si copia in una cartella normale, da caricare come
+    /// estensione non pacchettizzata. A ogni copia si sostituisce (nuova versione dell'app): nel browser poi basta «Ricarica».
+    static func exportedFolder(home: URL = URL(fileURLWithPath: NSHomeDirectory())) -> URL {
+        home.appendingPathComponent("Library/Application Support/Jobdossiers/estensione")
+    }
+
+    static func exportExtension(from src: URL, to dst: URL) throws {
+        let fm = FileManager.default
+        try fm.createDirectory(at: dst.deletingLastPathComponent(), withIntermediateDirectories: true)
+        if fm.fileExists(atPath: dst.path) { try fm.removeItem(at: dst) }
+        try fm.copyItem(at: src, to: dst)
+    }
 }

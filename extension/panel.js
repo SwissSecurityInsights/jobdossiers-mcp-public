@@ -1,4 +1,6 @@
-/* Finestra dell'estensione: legge la scheda attiva (solo dopo il clic, permesso activeTab), mostra i campi trovati e li salva con il server locale.
+/* Pannello laterale dell'estensione: legge la scheda attiva, mostra i campi trovati e li salva con il server locale.
+ * Lettura: dopo il clic sull'icona o Alt+Shift+J (permesso temporaneo activeTab su quella pagina), oppure a ogni cambio di pagina
+ * se l'utente ha concesso il permesso facoltativo sui siti («Leggi automaticamente»). Senza accesso il pannello lo dice e non mostra dati vecchi.
  * Il server (jobdossiers-mcp, registrato come host di native messaging «ch.jobdossiers.mcp») controlla i doppioni, cifra e invia: qui non c'è nessuna chiave.
  * I dati della pagina finiscono solo in campi di testo (value, textContent), mai in HTML. */
 import { fields } from './parse.js';
@@ -97,21 +99,73 @@ form.addEventListener('submit', async e => {
   }
 });
 
-async function main() {
+const SITES = { origins: ['http://*/*', 'https://*/*'] };
+let reading = 0;
+let connected = false;
+let autoOn = false;
+
+/** Stato del collegamento con l'app (una volta all'apertura del pannello). */
+async function connect() {
+  const s = await native('status');
+  connected = s.ok;
+  $('#conn').textContent = s.ok ? `collegato · ${s.result.applications} candidature` : 'non collegato';
+  if (!s.ok) show(s.message || s.error, 'err');
+  return s.ok;
+}
+
+async function autoState() {
+  autoOn = await chrome.permissions.contains(SITES);
+  $('#auto').textContent = autoOn ? 'Lettura automatica attiva: disattiva' : 'Leggi automaticamente ogni pagina';
+  return autoOn;
+}
+
+function noAccess(text) {
+  form.hidden = true;
+  $('#dups').hidden = true;
+  show(text, 'info');
+}
+
+/** Legge la scheda attiva di questa finestra. Solo l'ultima lettura avviata aggiorna il pannello. */
+async function read() {
+  const mine = ++reading;
   const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-  if (!tab || !/^https?:/i.test(tab.url || '')) { show("Apri la pagina di un annuncio, poi premi di nuovo l'icona.", 'err'); $('#conn').textContent = ''; return; }
-  const st = native('status');
+  if (!tab) return;
   let raw;
   try { [{ result: raw }] = await chrome.scripting.executeScript({ target: { tabId: tab.id }, func: grab }); }
-  catch { show('Questa pagina non si può leggere (pagine del browser o dello store).', 'err'); return; }
+  catch {
+    if (mine !== reading) return;
+    if (tab.url && !/^https?:/i.test(tab.url)) return noAccess('Apri la pagina di un annuncio.');
+    return noAccess("Per leggere questa pagina premi l'icona Jobdossiers nella barra degli strumenti (o Alt+Shift+J).");
+  }
+  if (mine !== reading || !raw) return;
   const f = fields(raw, htmlToText);
+  form.reset();
   for (const [k, v] of Object.entries(f)) if (form.elements[k]) form.elements[k].value = v;
   $('#src').textContent = f.job_desc ? `(${f.source}, ${f.job_desc.length} caratteri)` : '';
+  const btn = $('#save');
+  btn.textContent = 'Salva in Jobdossiers'; btn.disabled = !connected;
   form.hidden = false;
-  const s = await st;
-  $('#conn').textContent = s.ok ? `collegato · ${s.result.applications} candidature` : 'non collegato';
-  if (!s.ok) { show(s.message || s.error, 'err'); $('#save').disabled = true; return; }
-  await checkDuplicates();
+  if (connected) { show(''); await checkDuplicates(); }
+}
+
+$('#reread').addEventListener('click', read);
+$('#auto').addEventListener('click', async () => {
+  // permissions.request vuole il gesto dell'utente: va chiamato subito, senza await prima
+  const req = autoOn ? chrome.permissions.remove(SITES) : chrome.permissions.request(SITES);
+  await req.catch(() => false);
+  if (await autoState()) read();
+});
+
+// clic sull'icona o scorciatoia con il pannello già aperto (background.js)
+chrome.runtime.onMessage.addListener(m => { if (m?.type === 'leggi') read(); });
+// cambio di scheda o pagina: si legge se c'è il permesso; altrimenti il pannello lo dice
+chrome.tabs.onActivated.addListener(read);
+chrome.tabs.onUpdated.addListener((tabId, info, tab) => { if (info.status === 'complete' && tab.active) read(); });
+
+async function main() {
+  await autoState();
+  await connect();
+  await read();
 }
 
 main();

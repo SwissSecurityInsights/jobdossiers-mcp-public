@@ -12,6 +12,7 @@ rm -rf "$OUT" "$OUT.zip"
 dotnet publish src/Jobdossiers.Win -c Release -r win-x64 --self-contained \
   -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:EnableCompressionInSingleFile=true -p:DebugType=none -o "$OUT"
 cp ../dist/jobdossiers-mcp-windows-x64.exe "$OUT/jobdossiers-mcp.exe"
+cp -R ../extension "$OUT/estensione"
 cat > "$OUT/LEGGIMI.txt" <<'EOF'
 Jobdossiers per Windows (prototipo)
 
@@ -21,6 +22,9 @@ Jobdossiers per Windows (prototipo)
 3. Salva la chiave jda1.… (cifrata con DPAPI per il tuo utente) e premi Configura accanto a Claude Desktop, poi riavvia Claude.
 
 Il server viene copiato in %LOCALAPPDATA%\Jobdossiers\jobdossiers-mcp.exe: i client MCP puntano lì.
+
+Estensione per Chrome ed Edge (prototipo): in edge://extensions o chrome://extensions attiva la modalità sviluppatore,
+"Carica decompressa" e scegli %LOCALAPPDATA%\Jobdossiers\estensione (l'installer la copia lì).
 EOF
 (cd ../dist && rm -f Jobdossiers-win-x64.zip && zip -qr Jobdossiers-win-x64.zip Jobdossiers-win-x64)
 # Installer (NSIS, si compila anche da macOS: brew install makensis; senza un locale impostato makensis va in crash)

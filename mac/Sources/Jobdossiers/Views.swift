@@ -135,12 +135,12 @@ struct SettingsView: View {
                     default: EmptyView()
                     }
                 }
-                if let dir = Browsers.extensionFolder {
+                if Browsers.extensionFolder != nil {
                     HStack {
-                        Text("Prototipo: nel browser apri Estensioni, attiva la modalità sviluppatore e carica questa cartella.")
+                        Text("Prototipo: nel browser apri Estensioni, attiva la modalità sviluppatore e carica la cartella «estensione» che si apre. Dopo un aggiornamento dell'app premi di nuovo qui e poi Ricarica nel browser.")
                             .font(.caption).foregroundStyle(.secondary)
                         Spacer()
-                        Button("Mostra cartella") { NSWorkspace.shared.activateFileViewerSelecting([dir]) }
+                        Button("Mostra cartella") { model.showExtensionFolder() }
                     }
                 }
                 if let m = model.browserMessage { Text(m).font(.caption) }

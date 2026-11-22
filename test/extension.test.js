@@ -10,14 +10,19 @@ const ext = f => new URL('../extension/' + f, import.meta.url);
 test('estensione: manifest con permessi minimi e ID uguale a quello ammesso dal server', async () => {
   const m = JSON.parse(await readFile(ext('manifest.json'), 'utf8'));
   assert.equal(m.manifest_version, 3);
-  assert.deepEqual(m.permissions.sort(), ['activeTab', 'nativeMessaging', 'scripting']);
-  assert.equal(m.host_permissions, undefined, 'nessun accesso permanente ai siti');
+  assert.deepEqual(m.permissions.sort(), ['activeTab', 'nativeMessaging', 'scripting', 'sidePanel']);
+  assert.equal(m.host_permissions, undefined, 'nessun accesso permanente ai siti senza il consenso dell\'utente');
+  assert.deepEqual(m.optional_host_permissions, ['http://*/*', 'https://*/*'], 'lettura automatica: solo se l\'utente la concede');
   assert.equal(m.content_scripts, undefined);
+  assert.equal(m.action.default_popup, undefined, 'pannello laterale, non finestra sovrapposta');
+  assert.equal(m.side_panel.default_path, 'panel.html');
+  assert.deepEqual(Object.keys(m.commands), ['leggi-pagina']);
+  for (const f of [m.side_panel.default_path, m.background.service_worker, 'panel.js', 'panel.css', 'parse.js']) await readFile(ext(f));
   const pkg = JSON.parse(await readFile(new URL('../package.json', import.meta.url), 'utf8'));
   assert.equal(m.version, pkg.version);
   const hex = createHash('sha256').update(Buffer.from(m.key, 'base64')).digest('hex').slice(0, 32);
   assert.equal([...hex].map(c => String.fromCharCode(97 + parseInt(c, 16))).join(''), EXTENSION_IDS[0]);
-  const js = await readFile(ext('popup.js'), 'utf8');
+  const js = (await readFile(ext('panel.js'), 'utf8')) + (await readFile(ext('background.js'), 'utf8'));
   assert.ok(!/innerHTML|insertAdjacentHTML|eval\(|new Function/.test(js), 'i dati della pagina non diventano HTML né codice');
 });
 

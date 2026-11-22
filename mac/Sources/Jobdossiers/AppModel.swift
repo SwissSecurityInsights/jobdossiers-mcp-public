@@ -124,6 +124,18 @@ final class AppModel: ObservableObject {
         refreshBrowsers()
     }
 
+    func showExtensionFolder() {
+        guard let src = Browsers.extensionFolder else { return }
+        let dst = Browsers.exportedFolder()
+        do {
+            try Browsers.exportExtension(from: src, to: dst)
+            NSWorkspace.shared.activateFileViewerSelecting([dst])
+            browserMessage = "Cartella dell'estensione: \(dst.path)"
+        } catch {
+            browserMessage = "Copia dell'estensione non riuscita: \(error.localizedDescription)"
+        }
+    }
+
     func copyClaudeCodeCommand() {
         guard let cmd = clientCommand else { return }
         NSPasteboard.general.clearContents()

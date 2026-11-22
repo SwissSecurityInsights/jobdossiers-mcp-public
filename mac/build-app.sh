@@ -18,6 +18,7 @@ cp "$BIN" "$APP/Contents/MacOS/Jobdossiers"
 sed "s/__VERSION__/${VERSION:-0.0.0}/g" Info.plist > "$APP/Contents/Info.plist"
 
 cp "../dist/jobdossiers-mcp-$T" "$APP/Contents/Resources/jobdossiers-mcp"
+cp AppIcon.icns "$APP/Contents/Resources/AppIcon.icns"     # logo JD del portale (assets/icon.svg)
 # Estensione per Chrome ed Edge (prototipo: si carica come estensione non pacchettizzata da qui)
 cp -R ../extension "$APP/Contents/Resources/estensione"
 codesign --force --sign - "$APP/Contents/Resources/jobdossiers-mcp"

@@ -2,12 +2,16 @@
 <html lang="it">
 <head>
   <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Jobdossiers</title>
-  <link rel="stylesheet" href="popup.css">
-  <script type="module" src="popup.js"></script>
+  <link rel="stylesheet" href="panel.css">
+  <script type="module" src="panel.js"></script>
 </head>
 <body>
-  <header><strong>Jobdossiers</strong> <span id="conn" class="muted">…</span></header>
+  <header>
+    <div><strong>Jobdossiers</strong> <span id="conn" class="muted">…</span></div>
+    <button id="reread" type="button" class="link">Rileggi la pagina</button>
+  </header>
   <p id="msg" class="msg" hidden></p>
   <form id="f" hidden>
     <label>Impresa <input name="company" required maxlength="300"></label>
@@ -18,10 +22,13 @@
     </div>
     <label>Indirizzo dell'annuncio <input name="job_url" required type="url" maxlength="2000"></label>
     <label>Testo dell'annuncio <span id="src" class="muted"></span>
-      <textarea name="job_desc" rows="6"></textarea></label>
+      <textarea name="job_desc" rows="12"></textarea></label>
     <div id="dups" class="dups" hidden></div>
     <button id="save" type="submit">Salva in Jobdossiers</button>
   </form>
-  <p class="muted small">Il testo si cifra su questo computer prima di partire. Suggerimento: seleziona il testo dell'annuncio prima di aprire la finestra.</p>
+  <footer>
+    <button id="auto" type="button" class="link">Leggi automaticamente ogni pagina</button>
+    <p class="muted small">Senza lettura automatica il pannello legge una pagina solo quando premi l'icona Jobdossiers (o Alt+Shift+J). Il testo si cifra su questo computer prima di partire. Suggerimento: seleziona il testo dell'annuncio prima di premere l'icona.</p>
+  </footer>
 </body>
 </html>
