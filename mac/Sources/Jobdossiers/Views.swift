@@ -72,6 +72,16 @@ struct SettingsView: View {
         Form {
             Section("Chiave per automazioni") {
                 LabeledContent("Stato", value: model.hasKey ? "Salvata nel Portachiavi" : "Non salvata")
+                HStack {
+                    Button(model.linking ? "In attesa del browser…" : "Collega a Jobdossiers") {
+                        Task { let r = await model.link(); keyOK = r.ok; keyMessage = r.message }
+                    }
+                    .buttonStyle(.borderedProminent).disabled(model.linking)
+                    Spacer()
+                }
+                Text("Si apre il browser: accedi a jobdossiers.ch e conferma. La chiave arriva cifrata a questa app, senza copiarla.")
+                    .font(.caption).foregroundStyle(.secondary)
+                Text("Oppure incollala a mano:").font(.caption)
                 SecureField("jda1.…", text: $key)
                     .onSubmit(save)
                 HStack {

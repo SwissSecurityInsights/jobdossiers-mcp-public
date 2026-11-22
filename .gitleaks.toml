@@ -1,0 +1,11 @@
+# Regole predefinite di gitleaks, con una sola eccezione.
+[extend]
+useDefault = true
+
+# extension/manifest.json, campo "key": è la chiave PUBBLICA dell'estensione per Chrome ed Edge (RSA 2048, SubjectPublicKeyInfo in base64).
+# Chrome la vuole nel manifest per fissare l'ID dell'estensione, che il server accetta nel native messaging (src/native.js).
+# Non è un segreto: la chiave privata non è mai stata salvata. L'eccezione riguarda solo valori che iniziano come una chiave
+# pubblica RSA a 2048 bit; qualunque altro valore nello stesso file o altrove resta segnalato (provato il 22.11.2026).
+[[allowlists]]
+description = "Chiave pubblica RSA dell'estensione (fissa l'ID), non un segreto"
+regexes = ['''^MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA[A-Za-z0-9+/]+={0,2}$''']

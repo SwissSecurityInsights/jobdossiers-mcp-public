@@ -67,8 +67,17 @@ enum Server {
                            byStatus: ordered.map { (status: $0.0, count: $0.1) }, quota: quota)
     }
 
+    /// Collega il Mac dal browser (`--login`, docs/collega-dispositivo.md): il server apre il browser, riceve la chiave cifrata per lui
+    /// e la salva nel Portachiavi. Qui arriva solo l'esito (numero di schede), mai la chiave.
+    static func link(deviceName: String) async throws -> Int {
+        guard let url = resolve() else { throw Failure.notFound }
+        let data = try await run(url, ["--login", "--name", deviceName], timeout: 6 * 60)
+        guard let j = try? JSONSerialization.jsonObject(with: data) as? [String: Any], j["ok"] as? Bool == true else { throw Failure.badOutput }
+        return j["applications"] as? Int ?? 0
+    }
+
     /// Un file .js (sviluppo) gira con node; le app avviate dal Finder hanno un PATH minimo, quindi lo allargo.
-    private static func run(_ url: URL, _ args: [String]) async throws -> Data {
+    private static func run(_ url: URL, _ args: [String], timeout: Double = 60) async throws -> Data {
         let p = Process()
         var env = ProcessInfo.processInfo.environment
         env["PATH"] = "/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:" + (env["PATH"] ?? "")
@@ -95,7 +104,7 @@ enum Server {
                 else { finish(.failure(Failure.failed(e.replacingOccurrences(of: "Errore: ", with: "").trimmingCharacters(in: .whitespacesAndNewlines).prefix(300).description))) }
             }
             do { try p.run() } catch { finish(.failure(Failure.failed(error.localizedDescription))); return }
-            DispatchQueue.global().asyncAfter(deadline: .now() + 60) {
+            DispatchQueue.global().asyncAfter(deadline: .now() + timeout) {
                 if p.isRunning { p.terminate(); finish(.failure(Failure.timeout)) }
             }
         }

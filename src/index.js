@@ -4,7 +4,9 @@ import { createApi } from './api.js';
 import { Dossier } from './client.js';
 import { buildTools } from './tools.js';
 import { createServer, serveStdio } from './mcp.js';
-import { loadKey, saveKey } from './store.js';
+import { loadKey, saveKey, storeKey } from './store.js';
+import { startLink } from './link.js';
+import { spawn } from 'node:child_process';
 import { runCheck } from './check.js';
 import { nativeOrigin, serveNative, installHost, removeHost, hostPath } from './native.js';
 
@@ -12,6 +14,7 @@ const HELP = `jobdossiers-mcp ${pkg.version}
 Server MCP locale per Jobdossiers (cifratura end-to-end: il segreto resta su questo computer).
 
   jobdossiers-mcp            avvia il server MCP su stdio (è quello che lancia Claude)
+  jobdossiers-mcp --login [--name <dispositivo>]  collega questo computer dal browser (login e consenso sul portale), senza copiare la chiave
   jobdossiers-mcp --set-key  salva la chiave jda1.… nello store del sistema
   jobdossiers-mcp --check    prova in sola lettura: conteggi e nomi dei campi, nessun valore
   jobdossiers-mcp call <tool> [json|-]  esegue un solo tool e stampa il risultato JSON ("-" legge il JSON da stdin)
@@ -30,6 +33,25 @@ const INSTRUCTIONS = [
   'The agenda (jd_agenda, jd_agenda_save) holds free appointments; interviews of an application belong in its notes.',
 ].join(' ');
 
+/** Apre l'indirizzo nel browser predefinito, senza passare da una shell (l'URL contiene & e altri caratteri). */
+function openBrowser(url) {
+  const [cmd, args] = process.platform === 'darwin' ? ['open', [url]] : process.platform === 'win32' ? ['rundll32', ['url.dll,FileProtocolHandler', url]] : ['xdg-open', [url]];
+  try { spawn(cmd, args, { stdio: 'ignore', detached: true, windowsHide: true }).on('error', () => {}).unref(); } catch { /* resta l'indirizzo su stderr */ }
+}
+
+/** --login: collega il dispositivo, salva la chiave dove la cerca il server e la prova. Su stdout solo l'esito in JSON, mai la chiave. */
+async function login() {
+  const i = process.argv.indexOf('--name');
+  const name = i > 0 ? process.argv[i + 1] : undefined;
+  const link = await startLink({ base: process.env.JD_URL || 'https://jobdossiers.ch', name, allowAnyHost: process.env.JD_ALLOW_ANY_HOST === '1' });
+  process.stderr.write('Accedi e conferma nel browser. Se non si apre, apri questo indirizzo:\n' + link.url + '\n');
+  openBrowser(link.url);
+  const key = await link.done;
+  const where = await storeKey(key);
+  const quota = await (await getDossier()).quota();
+  return { ok: true, saved_in: where, applications: quota.applications };
+}
+
 let dossier = null;
 async function getDossier() {
   if (dossier) return dossier;
@@ -47,6 +69,7 @@ try {
   else if (arg === '--browser-remove') console.log(JSON.stringify(await removeHost({ path: process.argv[3] || process.execPath }), null, 2));
   else if (arg === '--version' || arg === '-v') console.log(pkg.version);
   else if (arg === '--help' || arg === '-h') console.log(HELP);
+  else if (arg === '--login') console.log(JSON.stringify(await login()));
   else if (arg === '--set-key') { console.log('Chiave salvata in: ' + await saveKey()); console.log('Verifica con: jobdossiers-mcp --check'); }
   else if (arg === '--check') console.log(JSON.stringify(await runCheck(await getDossier()), null, 2));
   else if (arg === 'call') {

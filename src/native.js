@@ -1,7 +1,7 @@
 /* Native messaging di Chrome ed Edge: l'estensione «Jobdossiers» (extension/) parla con questo eseguibile, che cifra e salva come per i client MCP.
  * Il browser avvia l'eseguibile indicato nel manifest dell'host passando come argomento l'origine dell'estensione (chrome-extension://<id>/);
  * i messaggi sono JSON UTF-8 preceduti dalla lunghezza (uint32 little endian) su stdin e stdout.
- * Solo tre azioni, nessun'altra: status, find_duplicates, create. La chiave resta nel Portachiavi o in DPAPI: l'estensione non la vede mai. */
+ * Solo quattro azioni, nessun'altra: status, find_duplicates, create e preferences (sola lettura, per il confronto con l'annuncio nel pannello). La chiave resta nel Portachiavi o in DPAPI: l'estensione non la vede mai. */
 import { homedir } from 'node:os';
 import { join, dirname, basename } from 'node:path';
 import { mkdir, writeFile, rm, access } from 'node:fs/promises';
@@ -13,7 +13,7 @@ export const HOST_NAME = 'ch.jobdossiers.mcp';
 export const EXTENSION_IDS = ['glgadembfbimaofodjfmhcnjkfffinne'];
 export const ALLOWED_ORIGINS = EXTENSION_IDS.map(id => `chrome-extension://${id}/`);
 /** Azione dell'estensione → strumento MCP che la esegue (stesse regole e controlli). */
-export const ACTIONS = Object.freeze({ status: 'jd_quota', find_duplicates: 'jd_find_duplicates', create: 'jd_create' });
+export const ACTIONS = Object.freeze({ status: 'jd_quota', find_duplicates: 'jd_find_duplicates', create: 'jd_create', preferences: 'jd_preferences' });
 const MAX_IN = 1024 * 1024;          // l'estensione manda al massimo una pagina di testo
 const MAX_OUT = 1024 * 1024;         // limite di Chrome per i messaggi dall'host
 
