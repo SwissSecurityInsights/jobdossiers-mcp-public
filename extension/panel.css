@@ -2,6 +2,7 @@
 @media (prefers-color-scheme: dark) { :root { --accent: #60a5fa; --warn: #fbbf24; --ok: #4ade80; --err: #f87171; --line: #3f3f46; } }
 body { font: 13px/1.4 system-ui, -apple-system, "Segoe UI", sans-serif; margin: 0; padding: 12px; min-width: 260px; }
 header { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; margin-bottom: 8px; }
+header .link { white-space: nowrap; }
 footer { margin-top: 16px; padding-top: 8px; border-top: 1px solid var(--line); }
 label { display: block; margin: 0 0 8px; font-weight: 600; }
 input, textarea { display: block; width: 100%; box-sizing: border-box; margin-top: 2px; padding: 5px 6px; font: inherit; font-weight: 400; border: 1px solid var(--line); border-radius: 4px; background: transparent; color: inherit; }
@@ -12,7 +13,7 @@ button:disabled { opacity: .5; cursor: default; }
 button.link { width: auto; padding: 0; color: var(--accent); background: none; font-weight: 400; text-decoration: underline; }
 .muted { color: GrayText; font-weight: 400; } .small { font-size: 11px; margin: 8px 0 0; }
 .msg { padding: 6px 8px; border-radius: 4px; border: 1px solid var(--line); }
-.msg.ok { border-color: var(--ok); } .msg.err { border-color: var(--err); } .msg.info { border-color: var(--accent); }
+.msg.ok { border-color: var(--ok); } .msg.err { border-color: var(--err); } .msg.info { border-color: var(--accent); } .msg.warn { border-color: var(--warn); }
 .match { margin: 0 0 10px; padding: 6px 8px; border: 1px solid var(--line); border-radius: 4px; }
 .match table { width: 100%; border-collapse: collapse; margin-top: 4px; }
 .match td { padding: 3px 4px; vertical-align: top; border-top: 1px solid var(--line); }
