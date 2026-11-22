@@ -30,6 +30,7 @@ jobs:
           dotnet publish win/src/Jobdossiers.Win -c Release -r win-x64 --self-contained -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:EnableCompressionInSingleFile=true -p:DebugType=none -o dist/Jobdossiers-win-x64
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
           Copy-Item dist/jobdossiers-mcp-windows-x64.exe dist/Jobdossiers-win-x64/jobdossiers-mcp.exe
+          Copy-Item -Recurse extension dist/Jobdossiers-win-x64/estensione
           Set-Content dist/Jobdossiers-win-x64/LEGGIMI.txt 'Pacchetto della prova automatica.'
           $v = @(([xml](Get-Content win/src/Jobdossiers.Win/Jobdossiers.Win.csproj)).Project.PropertyGroup.Version | Where-Object { $_ })[0]
           & "${env:ProgramFiles(x86)}\NSIS\makensis.exe" -V2 "-DVERSION=$v" "-DSRC=$((Resolve-Path dist/Jobdossiers-win-x64).Path)" "-DOUT=$PWD\dist\Jobdossiers-Setup.exe" win/installer/jobdossiers.nsi

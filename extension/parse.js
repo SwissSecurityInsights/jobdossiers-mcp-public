@@ -1,4 +1,4 @@
-/* Dai dati grezzi della pagina (grab() in popup.js) ai campi di jd_create. Nessun accesso al DOM: si prova anche in Node (test/extension.test.js).
+/* Dai dati grezzi della pagina (grab() in panel.js) ai campi di jd_create. Nessun accesso al DOM: si prova anche in Node (test/extension.test.js).
  * Ordine delle fonti: testo selezionato dall'utente, dati strutturati JobPosting (schema.org, li hanno quasi tutti i siti di annunci),
  * selettori noti di LinkedIn, infine titolo e testo della pagina. Tutto resta modificabile nella finestra prima di salvare. */
 

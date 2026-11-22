@@ -128,4 +128,20 @@ final class ClientsTests: XCTestCase {
         XCTAssertEqual(Browsers.state(command: "/b/server", home: home), .outdated)
         XCTAssertEqual(Browsers.present(home: home), ["Microsoft Edge"])
     }
+
+    /// La copia dell'estensione sostituisce quella vecchia (aggiornamento dell'app) e finisce fuori dal pacchetto .app.
+    func testCopiaEstensione() throws {
+        let fm = FileManager.default, tmp = fm.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? fm.removeItem(at: tmp) }
+        let src = tmp.appendingPathComponent("src"), dst = Browsers.exportedFolder(home: tmp.appendingPathComponent("home"))
+        XCTAssertTrue(dst.path.hasSuffix("Library/Application Support/Jobdossiers/estensione"))
+        try fm.createDirectory(at: src, withIntermediateDirectories: true)
+        try Data("1".utf8).write(to: src.appendingPathComponent("manifest.json"))
+        try Browsers.exportExtension(from: src, to: dst)
+        try Data("2".utf8).write(to: src.appendingPathComponent("manifest.json"))
+        try fm.createDirectory(at: dst.appendingPathComponent("vecchio"), withIntermediateDirectories: true)
+        try Browsers.exportExtension(from: src, to: dst)
+        XCTAssertEqual(try String(contentsOf: dst.appendingPathComponent("manifest.json"), encoding: .utf8), "2")
+        XCTAssertFalse(fm.fileExists(atPath: dst.appendingPathComponent("vecchio").path))
+    }
 }

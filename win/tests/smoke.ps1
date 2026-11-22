@@ -31,6 +31,7 @@ $p = Start-Process $Setup -ArgumentList '/S' -Wait -PassThru
 Check ($p.ExitCode -eq 0) "installer: codice di uscita 0"
 foreach ($f in 'Jobdossiers.exe', 'jobdossiers-mcp.exe', 'Disinstalla.exe', 'LEGGIMI.txt') { Check (Test-Path (Join-Path $dir $f)) "installato $f" }
 Check (Test-Path $lnk) "collegamento nel menu Start"
+Check (Test-Path (Join-Path $dir 'estensione\manifest.json')) "estensione copiata in estensione\"
 Check ("$((Get-ItemProperty $run -ErrorAction SilentlyContinue).Jobdossiers)" -like '*Jobdossiers.exe*') "avvio all'accesso attivo"
 Check ((Get-ItemProperty $uninst -ErrorAction SilentlyContinue).DisplayName -eq 'Jobdossiers') "voce in App installate"
 
@@ -90,5 +91,6 @@ Check (Test-Path "$claudeCfg.jobdossiers.bak") "disinstallazione: copia .jobdoss
 Check (Test-Path $keyFile) "disinstallazione silenziosa: la chiave resta"
 foreach ($k in $hostKeys) { Check (-not (Test-Path $k)) "disinstallazione: host dell'estensione tolto da $($k.Split('\')[2])" }
 Check (-not (Test-Path $hostJson)) "disinstallazione: manifest dell'host tolto"
+Check (-not (Test-Path (Join-Path $dir 'estensione'))) "disinstallazione: cartella dell'estensione tolta"
 
 if ($fail) { "`n$fail controlli falliti"; exit 1 } else { "`nProva su Windows: tutto ok"; exit 0 }     # exit esplicito: altrimenti il passo eredita il codice del --check senza chiave

@@ -10,11 +10,14 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <AssemblyName>Jobdossiers</AssemblyName>
     <RootNamespace>Jobdossiers.Win</RootNamespace>
-    <Version>0.2.0</Version>
+    <Version>0.2.1</Version>
     <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
     <InvariantGlobalization>false</InvariantGlobalization>
+    <!-- Logo JD del portale (assets/icon.svg): icona dell'exe e, incorporata, della finestra e dell'area di notifica -->
+    <ApplicationIcon>app.ico</ApplicationIcon>
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="..\Jobdossiers.Core\Jobdossiers.Core.csproj" />
+    <EmbeddedResource Include="app.ico" LogicalName="Jobdossiers.Win.app.ico" />
   </ItemGroup>
 </Project>
