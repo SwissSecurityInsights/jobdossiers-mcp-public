@@ -64,15 +64,23 @@ enum Browsers {
         return "v\(version) · \(f.string(from: d))"
     }
 
-    /// Da aggiornare se cambia la versione o, a parità di versione (build locali), la data di costruzione.
+    /// -1, 0, 1 tra (versione, data di costruzione): prima la versione «1.2.3», poi la data ISO (stesso formato, si confronta come testo).
+    static func compare(_ a: (version: String, build: String), _ b: (version: String, build: String)) -> Int {
+        let x = a.version.split(separator: ".").map { Int($0) ?? 0 }, y = b.version.split(separator: ".").map { Int($0) ?? 0 }
+        for i in 0..<3 { let d = (i < x.count ? x[i] : 0) - (i < y.count ? y[i] : 0); if d != 0 { return d > 0 ? 1 : -1 } }
+        return a.build == b.build ? 0 : (a.build > b.build ? 1 : -1)
+    }
+
+    /// Da aggiornare solo se nel browser c'è un'estensione più vecchia di quella dell'app (versione, poi data di costruzione).
+    /// Più nuova va bene: l'estensione si aggiorna anche online (src/update.js) e l'app non la riporta indietro.
     static func state(_ b: Browser, command: String, appVersion: String = AppInfo.version, appBuild: String = bundledBuild,
                       home: URL = URL(fileURLWithPath: NSHomeDirectory()), appInstalled: Bool? = nil) -> ExtensionState {
         guard appInstalled ?? Self.appInstalled(b) else { return .browserMissing }
         guard linkedPath(b, home: home) == command else { return .notLinked }
         guard let s = seen(b, home: home) else { return .notLoaded }
-        let same = s.version == appVersion && (appBuild.isEmpty || s.build == appBuild)
         let l = label(version: s.version, build: s.build)
-        return same ? .installed(l) : .outdated(l)
+        if appBuild.isEmpty { return compare((s.version, ""), (appVersion, "")) >= 0 ? .installed(l) : .outdated(l) }
+        return compare(s, (appVersion, appBuild)) >= 0 ? .installed(l) : .outdated(l)
     }
 
     /// Esegue il server con --browser-install o --browser-remove. Nessun segreto passa di qui.
@@ -111,8 +119,18 @@ enum Browsers {
     /// Da incollare nella finestra di scelta del browser (⌘⇧G): con «~» si raggiunge la Libreria, che il Finder nasconde.
     static let exportedPathForDialog = "~/Library/Application Support/Jobdossiers/estensione"
 
+    /// Versione e data di costruzione di una cartella dell'estensione (manifest.json e build.json).
+    static func folderBuild(_ dir: URL) -> (version: String, build: String)? {
+        guard let m = try? Data(contentsOf: dir.appendingPathComponent("manifest.json")),
+              let v = (try? JSONSerialization.jsonObject(with: m) as? [String: Any])?["version"] as? String else { return nil }
+        let b = (try? Data(contentsOf: dir.appendingPathComponent("build.json"))).flatMap { try? JSONSerialization.jsonObject(with: $0) as? [String: Any] }?["built_at"] as? String ?? ""
+        return (v, b)
+    }
+
+    /// Copia l'estensione dell'app nella cartella caricata dal browser, ma non sopra una più nuova arrivata con l'aggiornamento online.
     static func exportExtension(from src: URL, to dst: URL) throws {
         let fm = FileManager.default
+        if let have = folderBuild(dst), let mine = folderBuild(src), compare(have, mine) > 0 { return }
         try fm.createDirectory(at: dst.deletingLastPathComponent(), withIntermediateDirectories: true)
         if fm.fileExists(atPath: dst.path) { try fm.removeItem(at: dst) }
         try fm.copyItem(at: src, to: dst)

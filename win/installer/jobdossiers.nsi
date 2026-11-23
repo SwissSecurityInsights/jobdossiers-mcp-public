@@ -6,6 +6,7 @@ SetCompressor /SOLID lzma
 RequestExecutionLevel user
 
 !include "MUI2.nsh"
+!include "FileFunc.nsh"
 
 !define APP "Jobdossiers"
 !define UNINST "Software\Microsoft\Windows\CurrentVersion\Uninstall\Jobdossiers"
@@ -67,6 +68,13 @@ Section "Jobdossiers"
 
   ; Estensione per Chrome ed Edge: il server si registra come host di native messaging (manifest accanto all'eseguibile, chiavi HKCU).
   nsExec::Exec '"$INSTDIR\jobdossiers-mcp.exe" --browser-install'
+
+  ; Aggiornamento lanciato dall'app (/S /UPDATE): l'app si è chiusa, la si riapre
+  ${GetParameters} $R0
+  ClearErrors
+  ${GetOptions} $R0 "/UPDATE" $R1
+  IfErrors +2 0
+    Exec '"$INSTDIR\Jobdossiers.exe"'
 SectionEnd
 
 Section "Uninstall"

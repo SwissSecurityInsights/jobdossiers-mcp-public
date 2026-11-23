@@ -11,7 +11,7 @@ const ext = f => new URL('../extension/' + f, import.meta.url);
 test('estensione: manifest con permessi minimi e ID uguale a quello ammesso dal server', async () => {
   const m = JSON.parse(await readFile(ext('manifest.json'), 'utf8'));
   assert.equal(m.manifest_version, 3);
-  assert.deepEqual(m.permissions.sort(), ['activeTab', 'nativeMessaging', 'scripting', 'sidePanel']);
+  assert.deepEqual(m.permissions.sort(), ['activeTab', 'nativeMessaging', 'scripting', 'sidePanel', 'storage']);
   assert.equal(m.host_permissions, undefined, 'nessun accesso permanente ai siti senza il consenso dell\'utente');
   assert.deepEqual(m.optional_host_permissions, ['http://*/*', 'https://*/*'], 'lettura automatica: solo se l\'utente la concede');
   assert.equal(m.content_scripts, undefined);

@@ -48,6 +48,10 @@ struct MenuView: View {
             if let t = model.lastCheck {
                 Text("Controllo: " + t.formatted(date: .omitted, time: .shortened)).font(.caption).foregroundStyle(.tertiary)
             }
+            if let v = model.updateVersion {
+                Button(model.updating ? "Scarico l'aggiornamento…" : "Aggiornamento disponibile: v\(v) — Installa") { Task { await model.installUpdate() } }
+                    .buttonStyle(.borderedProminent).disabled(model.updating)
+            }
             Divider()
             HStack {
                 Button(model.checking ? "Controllo…" : "Controlla ora") { Task { await model.check() } }
@@ -213,8 +217,19 @@ struct SettingsView: View {
                 }
                 if let m = loginMessage { Text(m).font(.caption).foregroundStyle(.red) }
             }
-            Section("Informazioni") {
+            Section("Informazioni e aggiornamenti") {
                 LabeledContent("Versione", value: AppInfo.version)
+                Toggle("Controlla gli aggiornamenti ogni giorno", isOn: $model.autoUpdate)
+                HStack {
+                    Button("Controlla ora") { Task { await model.checkAppUpdate(force: true) } }
+                    if let v = model.updateVersion {
+                        Button(model.updating ? "Scarico…" : "Installa la versione \(v)") { Task { await model.installUpdate() } }
+                            .buttonStyle(.borderedProminent).disabled(model.updating)
+                    }
+                }
+                if let m = model.updateMessage { Text(m).font(.caption).foregroundStyle(.secondary) }
+                Text("Gli aggiornamenti arrivano dalla release pubblica su GitHub e si installano solo se la firma è valida. macOS chiede la password per sostituire l'app in Applicazioni; poi l'app si riapre da sola.")
+                    .font(.caption).foregroundStyle(.secondary)
             }
             Section("Server per il controllo") {
                 LabeledContent("In uso", value: model.resolvedServer ?? "non trovato")

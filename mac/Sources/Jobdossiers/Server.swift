@@ -76,6 +76,22 @@ enum Server {
         return j["applications"] as? Int ?? 0
     }
 
+    /// Aggiornamento dell'app: il server legge latest.json della release e ne verifica la firma (src/update.js). → versione disponibile o nil
+    static func appUpdateCheck() async throws -> String? {
+        guard let url = clientCommand().map({ URL(fileURLWithPath: $0) }) else { throw Failure.notFound }
+        let data = try await run(url, ["--app-update-check"])
+        guard let j = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { throw Failure.badOutput }
+        return j["available"] as? Bool == true ? j["version"] as? String : nil
+    }
+
+    /// Scarica l'installer e lo controlla con l'impronta firmata. → percorso del .pkg
+    static func appUpdateDownload() async throws -> URL {
+        guard let url = clientCommand().map({ URL(fileURLWithPath: $0) }) else { throw Failure.notFound }
+        let data = try await run(url, ["--app-update-download"], timeout: 15 * 60)
+        guard let j = try? JSONSerialization.jsonObject(with: data) as? [String: Any], let p = j["path"] as? String else { throw Failure.failed("Nessun aggiornamento da installare.") }
+        return URL(fileURLWithPath: p)
+    }
+
     /// Un file .js (sviluppo) gira con node; le app avviate dal Finder hanno un PATH minimo, quindi lo allargo.
     private static func run(_ url: URL, _ args: [String], timeout: Double = 60) async throws -> Data {
         let p = Process()

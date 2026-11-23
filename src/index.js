@@ -9,6 +9,9 @@ import { startLink } from './link.js';
 import { spawn } from 'node:child_process';
 import { runCheck } from './check.js';
 import { nativeOrigin, serveNative, installHost, removeHost, hostPath } from './native.js';
+import { updateExtension, checkApp, downloadApp } from './update.js';
+import { tmpdir } from 'node:os';
+import { join as pathJoin } from 'node:path';
 
 const HELP = `jobdossiers-mcp ${pkg.version}
 Server MCP locale per Jobdossiers (cifratura end-to-end: il segreto resta su questo computer).
@@ -20,6 +23,8 @@ Server MCP locale per Jobdossiers (cifratura end-to-end: il segreto resta su que
   jobdossiers-mcp call <tool> [json|-]  esegue un solo tool e stampa il risultato JSON ("-" legge il JSON da stdin)
   jobdossiers-mcp --browser-install [percorso]  registra questo eseguibile per l'estensione di Chrome ed Edge
   jobdossiers-mcp --browser-remove [percorso]   toglie la registrazione
+  jobdossiers-mcp --app-update-check     c'è una versione più nuova dell'app? (latest.json firmato della release, JSON)
+  jobdossiers-mcp --app-update-download  scarica e verifica l'installer dell'ultima versione, stampa il percorso (JSON)
   jobdossiers-mcp --version
 
 Ambiente: JD_AGENT_KEY, JD_AGENT_KEY_FILE, JD_URL (predefinito https://jobdossiers.ch), JD_ALLOW_ANY_HOST=1,
@@ -64,11 +69,13 @@ async function getDossier() {
 const arg = process.argv[2];
 const origin = nativeOrigin(process.argv);
 try {
-  if (origin) await serveNative({ origin, tools: buildTools(getDossier), opts: { dossi: async a => (await getDossier()).dossi(a) } });      // avviato da Chrome o Edge per l'estensione
+  if (origin) await serveNative({ origin, tools: buildTools(getDossier), opts: { dossi: async a => (await getDossier()).dossi(a), update: current => updateExtension({ current }) } });      // avviato da Chrome o Edge per l'estensione
   else if (arg === '--browser-install') console.log(JSON.stringify(await installHost({ path: hostPath(process.argv[3]) }), null, 2));
   else if (arg === '--browser-remove') console.log(JSON.stringify(await removeHost({ path: process.argv[3] || process.execPath }), null, 2));
   else if (arg === '--version' || arg === '-v') console.log(pkg.version);
   else if (arg === '--help' || arg === '-h') console.log(HELP);
+  else if (arg === '--app-update-check') console.log(JSON.stringify(await checkApp({ current: pkg.version })));
+  else if (arg === '--app-update-download') console.log(JSON.stringify(await downloadApp({ current: pkg.version, dir: process.argv[3] || pathJoin(tmpdir(), 'jobdossiers-aggiornamento') })));
   else if (arg === '--login') console.log(JSON.stringify(await login()));
   else if (arg === '--set-key') { console.log('Chiave salvata in: ' + await saveKey()); console.log('Verifica con: jobdossiers-mcp --check'); }
   else if (arg === '--check') console.log(JSON.stringify(await runCheck(await getDossier()), null, 2));
