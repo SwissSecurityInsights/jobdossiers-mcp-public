@@ -38,6 +38,7 @@ export function grab() {
     }
   }
   if (!titleEl) titleEl = [...document.querySelectorAll('h1')].find(h => !inList(h) && txt(h)) || null;
+  const DOT = /\s·\s/;          // «Ginevra · 2 giorni fa»: LinkedIn mette spazi non separabili (U+00A0) attorno al punto
   let top = null;
   if (titleEl) {
     const title = txt(titleEl);
@@ -45,16 +46,24 @@ export function grab() {
     for (let i = 0; i < 7 && box.parentElement; i++) {
       box = box.parentElement;
       if (many(box)) { box = null; break; }
-      if (/ · /.test(txt(box))) break;
+      if (DOT.test(txt(box))) break;
     }
     if (box) {
       const lines = txt(box).split('\n').map(l => l.trim()).filter(Boolean);
       const at = lines.findIndex(l => l.toLowerCase() === title.toLowerCase());
-      const meta = lines.find((l, i) => i > at && / · /.test(l)) || '';
-      const before = at > 0 ? lines[at - 1] : '';
+      const meta = lines.find((l, i) => i > at && DOT.test(l)) || '';
+      // impresa: la riga sopra il titolo, saltando le sue ripetizioni (testi per lettori di schermo come «… (Verified job)»)
+      const tl = title.toLowerCase();
+      let before = '';
+      for (let i = at - 1; i >= 0 && i >= at - 5; i--) {
+        const l = lines[i];
+        if (l.toLowerCase().startsWith(tl) || !/\p{L}.*\p{L}/u.test(l)) continue;          // ripetizioni del titolo, «…», «•••» e simili
+        before = l; break;
+      }
       top = {
-        title, location: meta.split(' · ')[0].trim(),
-        company: before && before.length <= 80 && !/ · /.test(before) ? before : '',
+        title, location: meta.split(DOT)[0].trim(),
+        // impresa solo se c'è la riga «luogo · data» (riquadro di un annuncio): altrimenti sopra il titolo c'è di tutto, per esempio il menu del sito
+        company: meta && before && before.length <= 80 && !DOT.test(before) ? before : '',
         text: lines.slice(Math.max(0, at - 1), at + 8).join('\n').slice(0, 2000),
       };
     }
