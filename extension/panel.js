@@ -144,7 +144,8 @@ function noAccess(text, { askAuto = false } = {}) {
   $('#auto-hint').hidden = !askAuto || autoOn;
 }
 
-let override = '';          // pagina che l'utente ha deciso di usare anche se non sembra un annuncio
+let override = '';
+let lastDiag = null;        // ultima lettura, per «Copia diagnostica»          // pagina che l'utente ha deciso di usare anche se non sembra un annuncio
 
 /** Verifica la scheda attiva (è un annuncio?) e solo allora ne estrae i campi. Solo l'ultima lettura avviata aggiorna il pannello.
  *  attempt: nuovi tentativi mentre la pagina carica ancora i contenuti (siti che si compongono dopo il caricamento, come LinkedIn). */
@@ -161,6 +162,7 @@ async function read(attempt = 0) {
   }
   if (mine !== reading || !raw) return;
   const check = detectJob(raw);
+  lastDiag = { check, raw };
   if (check.kind !== 'job' && check.kind !== 'probable' && raw.url !== override) {
     if (attempt < 2) { setTimeout(() => { if (mine === reading) read(attempt + 1); }, 1200); }      // il contenuto può arrivare dopo
     form.hidden = true; lastRaw = null; renderMatch(); $('#dups').hidden = true; $('#auto-hint').hidden = true;
@@ -185,6 +187,21 @@ async function read(attempt = 0) {
   // le pagine che si compongono dopo il caricamento: se manca ancora il titolo, si riprova
   if (!f.role && attempt < 2) setTimeout(() => { if (mine === reading) read(attempt + 1); }, 1200);
 }
+
+/** Solo ciò che il pannello ha letto dal riquadro dell'annuncio: niente parametri dell'indirizzo, niente dati del browser o dell'account. */
+$('#diag').addEventListener('click', async () => {
+  if (!lastDiag) return show('Niente da copiare: premi prima l\'icona su un annuncio.', 'info');
+  const { check, raw } = lastDiag, f = fields(raw, htmlToText);
+  let page = ''; try { const u = new URL(raw.url); page = u.host + u.pathname; } catch { /* indirizzo non valido */ }
+  const d = {
+    estensione: $('#ver').textContent, pagina: page, verifica: check,
+    campi: { role: f.role, company: f.company, luogo: f.employer_zip_city, paese: f.employer_country, fonti: f.sources, testo: f.job_desc.slice(0, 160), caratteri: f.job_desc.length },
+    riquadro: raw.top ? { title: raw.top.title, company: raw.top.company, location: raw.top.location, righe: raw.top.lines } : null,
+    dati_strutturati: (raw.ld || []).length, sezione_about: (raw.about || '').length, blocco: (raw.best || '').length,
+  };
+  try { await navigator.clipboard.writeText(JSON.stringify(d, null, 2)); show('Diagnostica copiata negli appunti: incollala nella chat.', 'ok'); }
+  catch { show('Copia non riuscita: il browser non ha dato accesso agli appunti.', 'err'); }
+});
 
 $('#use-anyway').addEventListener('click', async () => {
   const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });

@@ -38,7 +38,10 @@ export function grab() {
     }
   }
   if (!titleEl) titleEl = [...document.querySelectorAll('h1')].find(h => !inList(h) && txt(h)) || null;
-  const DOT = /\s·\s/;          // «Ginevra · 2 giorni fa»: LinkedIn mette spazi non separabili (U+00A0) attorno al punto
+  // «Ginevra · 2 giorni fa»: LinkedIn mette spazi non separabili (U+00A0) attorno al punto, e a volte ogni pezzo è un elemento a sé
+  // (contenitore flex), così nel testo il punto finisce su una riga da solo. Valgono anche «•» e «∙».
+  const DOT = /\s[·•∙]\s/, DOT_ALONE = /^[·•∙]$/;
+  const WHEN = /\b(ago|reposted|posted|fa|pubblicat|ripubblicat|vor|il y a|publi|heute|today|oggi|aujourd)/i;     // «2 weeks ago», «Reposted…»: non è un luogo
   let top = null;
   if (titleEl) {
     const title = txt(titleEl);
@@ -46,12 +49,18 @@ export function grab() {
     for (let i = 0; i < 7 && box.parentElement; i++) {
       box = box.parentElement;
       if (many(box)) { box = null; break; }
-      if (DOT.test(txt(box))) break;
+      if (/[·•∙]/.test(txt(box))) break;
     }
     if (box) {
       const lines = txt(box).split('\n').map(l => l.trim()).filter(Boolean);
       const at = lines.findIndex(l => l.toLowerCase() === title.toLowerCase());
-      const meta = lines.find((l, i) => i > at && DOT.test(l)) || '';
+      // riga «luogo · data» dopo il titolo: tutta su una riga, oppure a pezzi con il punto da solo
+      let place = '', meta = false;
+      for (let i = at + 1; i < Math.min(lines.length, at + 8); i++) {
+        if (DOT.test(lines[i])) { meta = true; place = lines[i].split(DOT)[0].trim(); break; }
+        if (DOT_ALONE.test(lines[i])) { meta = true; place = i - 1 > at ? lines[i - 1] : ''; break; }
+      }
+      if (WHEN.test(place) || place.length > 120) place = '';
       // impresa: la riga sopra il titolo, saltando le sue ripetizioni (testi per lettori di schermo come «… (Verified job)»)
       const tl = title.toLowerCase();
       let before = '';
@@ -61,10 +70,11 @@ export function grab() {
         before = l; break;
       }
       top = {
-        title, location: meta.split(DOT)[0].trim(),
+        title, location: place,
         // impresa solo se c'è la riga «luogo · data» (riquadro di un annuncio): altrimenti sopra il titolo c'è di tutto, per esempio il menu del sito
         company: meta && before && before.length <= 80 && !DOT.test(before) ? before : '',
-        text: lines.slice(Math.max(0, at - 1), at + 8).join('\n').slice(0, 2000),
+        text: lines.slice(Math.max(0, at - 1), at + 10).join('\n').slice(0, 2000),
+        lines: lines.slice(Math.max(0, at - 4), at + 10).map(l => l.slice(0, 200)),      // per «Copia diagnostica»
       };
     }
   }
