@@ -27,17 +27,20 @@ export function grab() {
   const many = el => el.querySelectorAll(JOBLINKS).length > 2;               // contiene un elenco di annunci
   const inList = el => !!el.closest('li, [role="listitem"], [role="list"], ul, ol');
   const tabRole = document.title.replace(/^\(\d+\)\s*/, '').split(/\s+(?:\||–|—|-)\s+/)[0].trim().toLowerCase();
-  let titleEl = null;
+  // Lo stesso titolo compare anche nella scheda dell'elenco (a sinistra, dentro un link all'annuncio): si sceglie il dettaglio.
+  // Punteggio: dentro un link a un annuncio o in un elenco = scheda dell'elenco; h1/h2 = titolo del dettaglio; a parità vince l'ultimo
+  // nella pagina (il dettaglio viene dopo l'elenco).
+  let titleEl = null, titleScore = -Infinity;
   if (tabRole.length > 2) {
-    for (const sel of ['h1, h2, h3, [role="heading"]', 'a, span, div, p']) {
-      for (const el of document.querySelectorAll(sel)) {
-        if (el.children.length > 3 || inList(el) || txt(el).toLowerCase() !== tabRole) continue;
-        titleEl = el; break;
-      }
-      if (titleEl) break;
+    for (const el of document.querySelectorAll('h1, h2, h3, [role="heading"], a, span, div, p')) {
+      if (el.children.length > 3 || txt(el).toLowerCase() !== tabRole) continue;
+      const score = (el.tagName === 'H1' ? 4 : el.tagName === 'H2' ? 3 : /^H\d$/.test(el.tagName) || el.getAttribute('role') === 'heading' ? 2 : 0)
+        - (el.closest(JOBLINKS) ? 10 : 0) - (inList(el) ? 10 : 0);
+      if (score >= titleScore) { titleScore = score; titleEl = el; }
     }
+    if (titleScore <= -10) titleEl = null;                                    // solo schede dell'elenco: nessun dettaglio aperto
   }
-  if (!titleEl) titleEl = [...document.querySelectorAll('h1')].find(h => !inList(h) && txt(h)) || null;
+  if (!titleEl) titleEl = [...document.querySelectorAll('h1')].find(h => !inList(h) && !h.closest(JOBLINKS) && txt(h)) || null;
   // «Ginevra · 2 giorni fa»: LinkedIn mette spazi non separabili (U+00A0) attorno al punto, e a volte ogni pezzo è un elemento a sé
   // (contenitore flex), così nel testo il punto finisce su una riga da solo. Valgono anche «•» e «∙».
   const DOT = /\s[·•∙]\s/, DOT_ALONE = /^[·•∙]$/;
@@ -60,7 +63,9 @@ export function grab() {
         if (DOT.test(lines[i])) { meta = true; place = lines[i].split(DOT)[0].trim(); break; }
         if (DOT_ALONE.test(lines[i])) { meta = true; place = i - 1 > at ? lines[i - 1] : ''; break; }
       }
-      if (WHEN.test(place) || place.length > 120) place = '';
+      // un luogo deve sembrare un luogo: niente date, stati dell'annuncio o righe dell'elenco («Saved», «1 connection works here»…)
+      const NOT_PLACE = /^(saved|salvat[oa]|gespeichert|enregistr|promoted|promoss|gesponsert|sponsoris|viewed|visualizzat|applied|candidat|easy apply|be an early applicant|actively recruiting|verified|no longer accepting)|connection|alumni|applicant|candidat|clicked|employees|dipendenti/i;
+      if (WHEN.test(place) || NOT_PLACE.test(place) || !/\p{L}{2}/u.test(place) || place.length > 120) place = '';
       // impresa: la riga sopra il titolo, saltando le sue ripetizioni (testi per lettori di schermo come «… (Verified job)»)
       const tl = title.toLowerCase();
       let before = '';
