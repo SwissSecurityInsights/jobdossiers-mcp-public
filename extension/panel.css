@@ -3,6 +3,15 @@
 body { font: 13px/1.4 system-ui, -apple-system, "Segoe UI", sans-serif; margin: 0; padding: 12px; min-width: 260px; }
 header { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; margin-bottom: 8px; }
 header .link { white-space: nowrap; }
+.dossi { margin-top: 14px; padding: 8px; border: 1px solid var(--line); border-radius: 4px; }
+.dossi .log { max-height: 320px; overflow-y: auto; margin: 8px 0; }
+.dossi .msg-u, .dossi .msg-a { white-space: pre-wrap; padding: 6px 8px; border-radius: 6px; margin: 4px 0; }
+.dossi .msg-u { background: color-mix(in srgb, var(--accent) 12%, transparent); margin-left: 24px; }
+.dossi .msg-a { border: 1px solid var(--line); margin-right: 12px; }
+.dossi .quick { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px; } .dossi .quick[hidden] { display: none; }
+.dossi .row2 .link { white-space: nowrap; }
+.dossi .chip { width: auto; padding: 3px 8px; font-weight: 400; font-size: 12px; color: inherit; background: transparent; border: 1px solid var(--line); border-radius: 12px; }
+.dossi .row2 { display: flex; gap: 8px; align-items: center; margin-top: 6px; } .dossi .row2 #dossi-send { width: auto; margin-left: auto; padding: 6px 14px; }
 footer { margin-top: 16px; padding-top: 8px; border-top: 1px solid var(--line); }
 label { display: block; margin: 0 0 8px; font-weight: 600; }
 input, textarea { display: block; width: 100%; box-sizing: border-box; margin-top: 2px; padding: 5px 6px; font: inherit; font-weight: 400; border: 1px solid var(--line); border-radius: 4px; background: transparent; color: inherit; }

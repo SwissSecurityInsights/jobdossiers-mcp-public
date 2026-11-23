@@ -18,7 +18,7 @@ sealed class TrayApp : ApplicationContext
     {
         ServerWarning = ServerHost.Install();
         try { Startup.RefreshPath(); } catch (Exception) { }
-        icon = new NotifyIcon { Icon = AppIcon.Create(), Text = "Jobdossiers", Visible = true, ContextMenuStrip = menu };
+        icon = new NotifyIcon { Icon = AppIcon.Create(), Text = "Jobdossiers " + AppInfo.Version, Visible = true, ContextMenuStrip = menu };
         icon.DoubleClick += (_, _) => OpenSettings();
         menu.Opening += (_, _) => BuildMenu();
         BuildMenu();

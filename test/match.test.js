@@ -83,3 +83,12 @@ test('confronto: modalità ibrida con meno giorni da remoto del minimo', () => {
   const one = run({ url: 'https://x.ch/j', h1: 'Head of IT', desc: 'Modello ibrido, 1 giorno da remoto.' }, { modes: ['hybrid'], remote_min: 2 });
   assert.equal(one.mode.result, 'no'); assert.equal(one.mode.job, 'ibrido, 1 giorno da remoto');
 });
+
+test('confronto: «a freelancer» tra i clienti non è un contratto freelance; le etichette del riquadro contano', () => {
+  const raw = { url: 'https://www.linkedin.com/jobs/view/3912345678/', top: { title: 'CISO', location: 'Lugano, Ticino, Switzerland', text: '✓ Hybrid ✓ Full-time' },
+    about: 'A platform that works for One — a business owner, an artist, a freelancer.' };
+  const r = Object.fromEntries(compare({ contracts: ['permanent'], modes: ['hybrid'], pen_min: 80 }, jobFacts(raw, fields(raw)), TODAY).map(x => [x.id, x]));
+  assert.equal(r.con.result, 'unknown'); assert.equal(r.mode.result, 'ok'); assert.equal(r.pen.job, '100%');
+  const fl = { url: 'https://x.example/j', h1: 'Security Consultant', about: 'This is a freelance position for 6 months.' };
+  assert.equal(compare({ contracts: ['permanent'] }, jobFacts(fl, fields(fl)), TODAY)[0].job, 'freelance');
+});

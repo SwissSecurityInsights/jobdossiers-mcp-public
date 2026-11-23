@@ -113,20 +113,29 @@ final class ClientsTests: XCTestCase {
         XCTAssertEqual(KeyStore.quote(#"a"b\c"#), #""a\"b\\c""#)
     }
 
-    /// Stato dell'estensione: dipende solo dai browser presenti e dal path scritto nei loro manifest.
-    func testStatoEstensioneBrowser() throws {
-        let home = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
-        defer { try? FileManager.default.removeItem(at: home) }
-        XCTAssertEqual(Browsers.state(command: "/a/server", home: home), .notInstalled)
-        let edge = Browsers.all[1].dir
-        try FileManager.default.createDirectory(at: home.appendingPathComponent(edge), withIntermediateDirectories: true)
-        XCTAssertEqual(Browsers.state(command: "/a/server", home: home), .notConfigured)
-        let m = Browsers.manifestURL(edge, home: home)
-        try FileManager.default.createDirectory(at: m.deletingLastPathComponent(), withIntermediateDirectories: true)
+    /// Stato dell'estensione per browser: app presente, collegamento (manifest dell'host) e versione vista (azione hello del server).
+    func testStatoEstensionePerBrowser() throws {
+        let fm = FileManager.default, home = fm.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? fm.removeItem(at: home) }
+        let edge = Browsers.all.first { $0.id == "edge" }!, chrome = Browsers.all.first { $0.id == "chrome" }!
+        XCTAssertEqual(edge.extensionsURL, "edge://extensions/"); XCTAssertEqual(chrome.extensionsURL, "chrome://extensions/")
+        XCTAssertEqual(Browsers.state(edge, command: "/a/server", appVersion: "0.2.3", home: home, appInstalled: false), .browserMissing)
+        XCTAssertEqual(Browsers.state(edge, command: "/a/server", appVersion: "0.2.3", home: home, appInstalled: true), .notLinked)
+        let m = Browsers.manifestURL(edge.dir, home: home)
+        try fm.createDirectory(at: m.deletingLastPathComponent(), withIntermediateDirectories: true)
         try Data(#"{"name":"ch.jobdossiers.mcp","path":"/a/server","type":"stdio"}"#.utf8).write(to: m)
-        XCTAssertEqual(Browsers.state(command: "/a/server", home: home), .configured)
-        XCTAssertEqual(Browsers.state(command: "/b/server", home: home), .outdated)
-        XCTAssertEqual(Browsers.present(home: home), ["Microsoft Edge"])
+        XCTAssertEqual(Browsers.state(edge, command: "/b/server", appVersion: "0.2.3", home: home, appInstalled: true), .notLinked, "punta a un altro server")
+        XCTAssertEqual(Browsers.state(edge, command: "/a/server", appVersion: "0.2.3", home: home, appInstalled: true), .notLoaded)
+        let seen = home.appendingPathComponent("Library/Application Support/Jobdossiers/estensione-edge.json")
+        try fm.createDirectory(at: seen.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try Data(#"{"browser":"edge","version":"0.2.2","build":"2026-11-23T10:00:00Z","seen_at":"2026-11-23T10:00:00Z"}"#.utf8).write(to: seen)
+        let l = Browsers.label(version: "0.2.2", build: "2026-11-23T10:00:00Z")
+        XCTAssertTrue(l.hasPrefix("v0.2.2 · 23.11 "))
+        XCTAssertEqual(Browsers.state(edge, command: "/a/server", appVersion: "0.2.3", appBuild: "2026-11-23T10:00:00Z", home: home, appInstalled: true), .outdated(l))
+        XCTAssertEqual(Browsers.state(edge, command: "/a/server", appVersion: "0.2.2", appBuild: "2026-11-23T10:00:00Z", home: home, appInstalled: true), .installed(l))
+        XCTAssertEqual(Browsers.state(edge, command: "/a/server", appVersion: "0.2.2", appBuild: "2026-11-23T14:05:00Z", home: home, appInstalled: true), .outdated(l), "stessa versione, build più nuova nell'app")
+        XCTAssertEqual(Browsers.state(edge, command: "/a/server", appVersion: "0.2.2", appBuild: "", home: home, appInstalled: true), .installed(l), "app senza build.json: conta la versione")
+        XCTAssertEqual(Browsers.state(chrome, command: "/a/server", appVersion: "0.2.2", home: home, appInstalled: true), .notLinked, "Chrome ha il suo stato")
     }
 
     /// La copia dell'estensione sostituisce quella vecchia (aggiornamento dell'app) e finisce fuori dal pacchetto .app.

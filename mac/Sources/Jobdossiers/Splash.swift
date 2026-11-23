@@ -35,7 +35,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 struct SplashView: View {
     let hasKey: Bool
     let close: () -> Void
-    private var version: String { Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "sviluppo" }
+    private var version: String { AppInfo.version }
 
     var body: some View {
         VStack(spacing: 14) {

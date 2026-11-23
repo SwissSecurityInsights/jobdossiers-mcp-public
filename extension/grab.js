@@ -21,6 +21,59 @@ export function grab() {
   };
   const site = { title: txt(first(SITE.title)), company: txt(first(SITE.company)), desc: txt(first(SITE.desc)).slice(0, MAX) };
 
+  // Riquadro dell'annuncio senza classi del sito: l'elemento con lo stesso testo del titolo della scheda, fuori dagli elenchi di annunci
+  // (LinkedIn e altri mostrano accanto un elenco con altri titoli). Intorno: impresa, riga «luogo · data», etichette come «Hybrid».
+  const JOBLINKS = 'a[href*="/jobs/view/"], a[href*="currentJobId="], a[href*="/viewjob"], a[href*="/vacancies/detail/"]';
+  const many = el => el.querySelectorAll(JOBLINKS).length > 2;               // contiene un elenco di annunci
+  const inList = el => !!el.closest('li, [role="listitem"], [role="list"], ul, ol');
+  const tabRole = document.title.replace(/^\(\d+\)\s*/, '').split(/\s+(?:\||–|—|-)\s+/)[0].trim().toLowerCase();
+  let titleEl = null;
+  if (tabRole.length > 2) {
+    for (const sel of ['h1, h2, h3, [role="heading"]', 'a, span, div, p']) {
+      for (const el of document.querySelectorAll(sel)) {
+        if (el.children.length > 3 || inList(el) || txt(el).toLowerCase() !== tabRole) continue;
+        titleEl = el; break;
+      }
+      if (titleEl) break;
+    }
+  }
+  if (!titleEl) titleEl = [...document.querySelectorAll('h1')].find(h => !inList(h) && txt(h)) || null;
+  let top = null;
+  if (titleEl) {
+    const title = txt(titleEl);
+    let box = titleEl;
+    for (let i = 0; i < 7 && box.parentElement; i++) {
+      box = box.parentElement;
+      if (many(box)) { box = null; break; }
+      if (/ · /.test(txt(box))) break;
+    }
+    if (box) {
+      const lines = txt(box).split('\n').map(l => l.trim()).filter(Boolean);
+      const at = lines.findIndex(l => l.toLowerCase() === title.toLowerCase());
+      const meta = lines.find((l, i) => i > at && / · /.test(l)) || '';
+      const before = at > 0 ? lines[at - 1] : '';
+      top = {
+        title, location: meta.split(' · ')[0].trim(),
+        company: before && before.length <= 80 && !/ · /.test(before) ? before : '',
+        text: lines.slice(Math.max(0, at - 1), at + 8).join('\n').slice(0, 2000),
+      };
+    }
+  }
+
+  // Sezione «About the job» (titoli dell'interfaccia di LinkedIn e di altri siti, in più lingue): il contenitore della sezione
+  const ABOUT = /^(about the job|job description|informazioni sull.offerta di lavoro|descrizione (del lavoro|dell.offerta)|uber den job|über den job|infos zum job|stellenbeschreibung|a propos de l.offre d.emploi|à propos de l.offre d.emploi|description du poste)$/i;
+  let about = '';
+  for (const h of document.querySelectorAll('h1, h2, h3, h4, strong, [role="heading"], span')) {
+    if (!ABOUT.test(txt(h))) continue;
+    let box = h;
+    for (let i = 0; i < 6 && box.parentElement; i++) {
+      box = box.parentElement;
+      if (many(box)) { box = null; break; }
+      if (txt(box).length >= 300) break;
+    }
+    if (box) { const lines = txt(box).split('\n'); while (lines.length && (!lines[0].trim() || ABOUT.test(lines[0].trim()))) lines.shift(); about = lines.join('\n').trim().slice(0, MAX); break; }
+  }
+
   // Microdata schema.org/JobPosting
   const md = document.querySelector('[itemtype*="schema.org/JobPosting" i]');
   const micro = md ? {
@@ -38,6 +91,7 @@ export function grab() {
     if (t.length < 400 || t.length > 60000) continue;
     const linkText = [...el.querySelectorAll('a')].reduce((n, a) => n + (a.innerText || '').length, 0);
     if (linkText / t.length > 0.35) continue;                          // navigazione, elenchi di link
+    if (many(el)) continue;                                            // elenco di annunci (colonna di LinkedIn e simili)
     const hits = new Set((t.match(SECTIONS) || []).map(s => s.toLowerCase())).size;
     if (!hits) continue;
     const score = hits * 3000 - t.length / 10;                         // a parità di sezioni, il blocco più stretto
@@ -56,7 +110,7 @@ export function grab() {
     url: location.href, title: document.title, h1: txt(document.querySelector('h1')).slice(0, 500),
     og_title: meta('og:title'), og_site: meta('og:site_name'), og_type: meta('og:type'),
     ld: [...document.querySelectorAll('script[type="application/ld+json"]')].slice(0, 20).map(s => s.textContent.slice(0, 200000)),
-    micro, site, best: bestText.slice(0, MAX), sectionHits, apply, jobLinks,
+    micro, site, top, about, best: bestText.slice(0, MAX), sectionHits, apply, jobLinks,
     selection: String(getSelection() || '').trim().slice(0, MAX),
     main: txt(document.querySelector('main, article, [role="main"]') || document.body).slice(0, MAX),
   };

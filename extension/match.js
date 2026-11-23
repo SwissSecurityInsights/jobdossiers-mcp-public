@@ -17,7 +17,7 @@ const LVL = { ic: 'specialista', lead: 'responsabile di team', head: 'head / dir
 export function jobFacts(raw, f) {
   const r = raw || {}, jp = jobPostings(r.ld)[0] || {};
   const role = f?.role || jp.title || r.h1 || '';
-  const text = [role, f?.job_desc, r.selection, r.desc].filter(Boolean).join('\n');
+  const text = [role, r.top?.text, f?.job_desc, r.selection, r.desc].filter(Boolean).join('\n');      // top: riga «luogo · data» ed etichette come «Hybrid»
   const t = fold(text);
   const out = { text, role };
 
@@ -77,7 +77,8 @@ export function jobFacts(raw, f) {
   if (et.includes('INTERN')) con.add('internship');
   if (/\b(unbefristet|festanstellung|permanent|tempo indeterminato|cdi|contrat a duree indeterminee)\b/.test(t)) con.add('permanent');
   if (/\b(befristet|fixed[- ]term|tempo determinato|cdd|temporary contract)\b/.test(t)) con.add('fixed');
-  if (/\b(freelance|freiberuflich|freelancer|contractor)\b/.test(t)) con.add('freelance');
+  // «a freelancer» tra i clienti di un'impresa non è un contratto: solo formule che descrivono il rapporto di lavoro
+  if (/\b(freelance (position|role|contract|basis|assignment|project)|on a freelance basis|as a freelancer|auf freiberuflicher basis|freiberufliche (mitarbeit|tatigkeit)|in qualita di libero professionista|independent contractor|contractor role)\b/.test(t)) con.add('freelance');
   if (/\b(interim|temporar|ad interim|personalverleih)\b/.test(t)) con.add('interim');
   if (/\b(praktikum|internship|tirocinio|stagiaire|praktikant)\b/.test(t)) con.add('internship');
   out.contracts = [...con];

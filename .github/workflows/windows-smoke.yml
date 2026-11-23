@@ -10,6 +10,8 @@ on:
   workflow_dispatch:
 jobs:
   smoke:
+    # Nel repo privato solo a mano (Actions → Prova Windows → Run workflow), per esempio prima di una release: sul Mac non si prova
+    if: github.repository == 'SwissSecurityInsights/jobdossiers-mcp-public' || github.event_name == 'workflow_dispatch'
     runs-on: windows-latest
     timeout-minutes: 30
     steps:

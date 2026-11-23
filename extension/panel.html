@@ -34,6 +34,23 @@
     <div id="dups" class="dups" hidden></div>
     <button id="save" type="submit">Salva in Jobdossiers</button>
   </form>
+  <section id="dossi" class="dossi" hidden>
+    <strong>Chiedi a Dossi</strong> <span class="muted small">esperimento</span>
+    <div id="dossi-consent" hidden>
+      <p class="small">Dossi usa l'AI di sistema di Jobdossiers: le tue candidature decifrate, l'annuncio che stai guardando e le domande passano <strong>in chiaro</strong> dal portale a Infomaniak (Svizzera), come in Jobdossiers. Non vengono salvate.</p>
+      <button id="dossi-ok" type="button">Accetto, usa Dossi</button>
+    </div>
+    <div id="dossi-chat" hidden>
+      <div id="dossi-quick" class="quick">
+        <button type="button" class="chip">È adatto a me?</button>
+        <button type="button" class="chip">Cosa metto in evidenza nella lettera?</button>
+        <button type="button" class="chip">Assomiglia a candidature che ho già fatto?</button>
+      </div>
+      <div id="dossi-log" class="log"></div>
+      <textarea id="dossi-q" rows="3" maxlength="3000" placeholder="Scrivi a Dossi…"></textarea>
+      <div class="row2"><span id="dossi-usage" class="muted small"></span><button id="dossi-new" type="button" class="link">Nuova conversazione</button><button id="dossi-send" type="button">Invia</button></div>
+    </div>
+  </section>
   <footer>
     <button id="auto" type="button" class="link">Leggi automaticamente ogni pagina</button>
     <p class="muted small">Senza lettura automatica il pannello verifica e legge una pagina solo quando premi l'icona Jobdossiers (o Alt+Shift+J); con la lettura automatica a ogni caricamento. Il testo si cifra su questo computer prima di partire. Suggerimento: seleziona il testo dell'annuncio prima di premere l'icona.</p>

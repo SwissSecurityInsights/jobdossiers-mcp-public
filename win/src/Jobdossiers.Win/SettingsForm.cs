@@ -15,7 +15,7 @@ sealed class SettingsForm : Form
     public SettingsForm(TrayApp app)
     {
         this.app = app;
-        Text = "Impostazioni Jobdossiers"; Icon = AppIcon.Create(); StartPosition = FormStartPosition.CenterScreen;
+        Text = "Impostazioni Jobdossiers " + AppInfo.Version; Icon = AppIcon.Create(); StartPosition = FormStartPosition.CenterScreen;
         Font = new Font("Segoe UI", 9.5f); ClientSize = new Size(560, 640); MinimumSize = new Size(480, 400);
         var root = Column(); root.Dock = DockStyle.Fill; root.AutoScroll = true; root.Padding = new Padding(16); root.AutoSize = false;
 

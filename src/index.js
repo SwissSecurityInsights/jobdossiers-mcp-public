@@ -64,7 +64,7 @@ async function getDossier() {
 const arg = process.argv[2];
 const origin = nativeOrigin(process.argv);
 try {
-  if (origin) await serveNative({ origin, tools: buildTools(getDossier) });      // avviato da Chrome o Edge per l'estensione
+  if (origin) await serveNative({ origin, tools: buildTools(getDossier), opts: { dossi: async a => (await getDossier()).dossi(a) } });      // avviato da Chrome o Edge per l'estensione
   else if (arg === '--browser-install') console.log(JSON.stringify(await installHost({ path: hostPath(process.argv[3]) }), null, 2));
   else if (arg === '--browser-remove') console.log(JSON.stringify(await removeHost({ path: process.argv[3] || process.execPath }), null, 2));
   else if (arg === '--version' || arg === '-v') console.log(pkg.version);
