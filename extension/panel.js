@@ -207,10 +207,74 @@ chrome.tabs.onActivated.addListener(() => read());
 // ogni caricamento, e ogni cambio di indirizzo senza ricaricare (LinkedIn e altri siti che cambiano annuncio nella stessa pagina): nuova verifica
 chrome.tabs.onUpdated.addListener((tabId, info, tab) => { if (tab.active && (info.status === 'complete' || info.url)) read(); });
 
+// ── Dossi (esperimento): domande all'assistente AI di Jobdossiers sull'annuncio aperto e sulle candidature ──
+const DOSSI_OK = 'dossi-consenso-ai-sistema';
+let dossiMsgs = [], dossiFor = '', dossiBusy = false;
+const ls = { get: k => { try { return localStorage.getItem(k); } catch { return null; } }, set: (k, v) => { try { localStorage.setItem(k, v); } catch { /* memoria non disponibile */ } } };
+const DOSSI_ERR = {
+  'err.asst_limit': 'Hai usato tutte le domande a Dossi di questo mese.', 'err.ai_day_cap': 'Dossi ha raggiunto il limite giornaliero della piattaforma: riprova domani.',
+  'err.rate_limited': 'Troppe domande in un\'ora: riprova più tardi.', rate_limited: 'Troppe domande in un\'ora: riprova più tardi.', 'err.ai_busy': 'Dossi è occupato: riprova tra poco.',
+  'err.asst_unavailable': 'Dossi con l\'AI di sistema non è disponibile per il tuo piano.', agent_scope: 'Il portale non permette ancora Dossi dall\'app Jobdossiers (in arrivo).',
+};
+
+function dossiShow() {
+  $('#dossi').hidden = !connected;
+  const ok = ls.get(DOSSI_OK) === '1';
+  $('#dossi-consent').hidden = ok; $('#dossi-chat').hidden = !ok;
+}
+
+function dossiAdd(role, text) {
+  const div = document.createElement('div'); div.className = role === 'user' ? 'msg-u' : 'msg-a'; div.textContent = text;
+  $('#dossi-log').append(div); div.scrollIntoView({ block: 'nearest' });
+  return div;
+}
+
+function dossiReset() { dossiMsgs = []; $('#dossi-log').replaceChildren(); $('#dossi-quick').hidden = false; }
+
+/** L'annuncio in visione: i campi del pannello come li vede l'utente (se è un annuncio). */
+function dossiPosting() {
+  if (form.hidden) return null;
+  const v = values();
+  return { role: v.role, company: v.company, place: [v.employer_zip_city, v.employer_country].filter(Boolean).join(', '), url: v.job_url, job_desc: v.job_desc };
+}
+
+async function dossiAsk(text) {
+  const q = String(text || '').trim();
+  if (!q || dossiBusy) return;
+  const posting = dossiPosting();
+  if ((posting?.url || '') !== dossiFor) { dossiReset(); dossiFor = posting?.url || ''; }
+  dossiBusy = true; $('#dossi-send').disabled = true; $('#dossi-quick').hidden = true; $('#dossi-q').value = '';
+  dossiAdd('user', q); dossiMsgs.push({ role: 'user', content: q });
+  const wait = dossiAdd('assistant', 'Dossi sta pensando…');
+  const r = await native('dossi', { messages: dossiMsgs, posting, first: dossiMsgs.length === 1, consent: true });
+  if (r.ok) {
+    wait.textContent = r.result.text + (r.result.truncated ? '\n[risposta interrotta]' : '');
+    dossiMsgs.push({ role: 'assistant', content: r.result.text });
+    const u = r.result.usage; $('#dossi-usage').textContent = u && u.limit ? `Domande questo mese: ${u.used}/${u.limit}` : '';
+  } else {
+    // 429 vale sia per il limite del mese sia per quello orario: conta il messaggio del portale, poi il codice
+    wait.textContent = DOSSI_ERR[r.message] || (r.error === 'agent_scope' ? DOSSI_ERR.agent_scope : '') || r.message || DOSSI_ERR[r.error] || r.error;
+    dossiMsgs.pop();                                       // la domanda non è arrivata: si può riprovare
+  }
+  dossiBusy = false; $('#dossi-send').disabled = false;
+}
+
+$('#dossi-ok').addEventListener('click', () => { ls.set(DOSSI_OK, '1'); dossiShow(); });
+$('#dossi-send').addEventListener('click', () => dossiAsk($('#dossi-q').value));
+$('#dossi-q').addEventListener('keydown', e => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) dossiAsk($('#dossi-q').value); });
+$('#dossi-new').addEventListener('click', dossiReset);
+for (const b of document.querySelectorAll('#dossi-quick .chip')) b.addEventListener('click', () => dossiAsk(b.textContent));
+
 async function main() {
   $('#ver').textContent = 'v' + chrome.runtime.getManifest().version;      // la versione dell'estensione caricata nel browser
+  // e la data di costruzione (build.json, scritto da build-app.sh e win/build.sh): con la stessa versione distingue le build locali
+  Promise.resolve().then(() => fetch(chrome.runtime.getURL('build.json'))).then(r => r.json()).then(b => {
+    const d = new Date(b.built_at);
+    if (!isNaN(d)) $('#ver').textContent += ' · ' + d.toLocaleString('it-CH', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
+  }).catch(() => { $('#ver').textContent += ' · sviluppo'; });
   await autoState();
   if (await connect()) await loadPrefs();
+  dossiShow();
   await read();
 }
 

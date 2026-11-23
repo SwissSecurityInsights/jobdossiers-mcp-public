@@ -6,7 +6,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { PassThrough } from 'node:stream';
-import { encode, decoder, serveNative, installHost, removeHost, hostPath, nativeOrigin, ALLOWED_ORIGINS, HOST_NAME, ACTIONS } from '../src/native.js';
+import { encode, decoder, serveNative, handleMessage, installHost, removeHost, hostPath, nativeOrigin, seenDir, ALLOWED_ORIGINS, HOST_NAME, ACTIONS } from '../src/native.js';
 import { decObj, encObj, encBytes, AAD } from '../src/crypto.js';
 import { makeFixture, startMock } from './helpers.mjs';
 
@@ -99,6 +99,23 @@ test('native: preferenze in sola lettura per il confronto nel pannello', async (
     assert.deepEqual(r.got[0].result, { saved: true, preferences: { v: 1, home_city: 'Lugano', modes: ['hybrid'] } }, 'valori fuori elenco tolti, come in jd_preferences');
     assert.ok(mock.requests.every(x => !['app_save', 'doc_upload', 'agenda_save', 'net_save'].includes(x.action)), 'nessuna scrittura');
   } finally { await mock.close(); }
+});
+
+test('native: hello registra browser e versione dell\'estensione, senza altri dati', async () => {
+  const home = await mkdtemp(join(tmpdir(), 'jd-seen-'));
+  try {
+    const tools = [];
+    const opts = { platform: 'darwin', home };
+    const ok = await handleMessage({ id: 3, action: 'hello', args: { browser: 'edge', version: '0.2.3', build: '2026-11-23T14:05:00Z', extra: 'x' } }, tools, opts);
+    assert.deepEqual(ok, { id: 3, ok: true, result: { recorded: true } });
+    const saved = JSON.parse(await readFile(join(seenDir(opts), 'estensione-edge.json'), 'utf8'));
+    assert.deepEqual(Object.keys(saved), ['browser', 'version', 'build', 'seen_at']); assert.equal(saved.version, '0.2.3'); assert.equal(saved.build, '2026-11-23T14:05:00Z');
+    await handleMessage({ id: 5, action: 'hello', args: { browser: 'chrome', version: '0.2.3', build: '<script>' } }, tools, opts);
+    assert.equal(JSON.parse(await readFile(join(seenDir(opts), 'estensione-chrome.json'), 'utf8')).build, '', 'data non valida: scartata');
+    assert.ok(seenDir(opts).endsWith('Library/Application Support/Jobdossiers'));
+    for (const args of [{ browser: '../x', version: '0.2.3' }, { browser: 'edge', version: '1; rm' }, {}])
+      assert.equal((await handleMessage({ id: 4, action: 'hello', args }, tools, opts)).error, 'invalid_value');
+  } finally { await rm(home, { recursive: true }); }
 });
 
 test('native: avviato da un\'estensione sconosciuta non legge la chiave e non chiama il portale', async () => {

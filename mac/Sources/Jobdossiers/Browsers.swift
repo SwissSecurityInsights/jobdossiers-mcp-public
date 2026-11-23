@@ -1,39 +1,78 @@
 /* Estensione per Chrome ed Edge: il server dell'app si registra come host di native messaging (src/native.js).
- * Scrittura e rimozione le fa il server stesso (--browser-install / --browser-remove), così la regola è una sola per Mac e Windows;
- * qui si leggono solo i manifest per mostrare lo stato. */
-import Foundation
+ * Scrittura e rimozione le fa il server stesso (--browser-install / --browser-remove), così la regola è una sola per Mac e Windows.
+ * Stato per browser: app del browser presente, collegamento (manifest dell'host) e «estensione vista»: un file che l'estensione fa
+ * scrivere al server all'installazione e a ogni avvio del browser (azione hello), perché macOS non lascia leggere all'app i dati dei browser. */
+import AppKit
+
+struct Browser: Identifiable, Equatable {
+    let id: String            // come SEEN_BROWSERS in src/native.js
+    let name: String          // nome dell'app, anche per `open -a`
+    let dir: String           // cartella del profilo, relativa alla home
+    let extensionsURL: String
+    let devModeWhere: String
+    let loadButton: String
+    let pinHow: String
+}
+
+enum ExtensionState: Equatable {
+    case browserMissing, notLinked, notLoaded, installed(String), outdated(String)
+}
 
 enum Browsers {
     static let hostName = "ch.jobdossiers.mcp"
-    /// Cartelle dei profili, relative alla home: se mancano il browser non è installato (o non è mai stato avviato).
-    static let all: [(name: String, dir: String)] = [
-        ("Google Chrome", "Library/Application Support/Google/Chrome"),
-        ("Microsoft Edge", "Library/Application Support/Microsoft Edge"),
+    static let all: [Browser] = [
+        Browser(id: "edge", name: "Microsoft Edge", dir: "Library/Application Support/Microsoft Edge", extensionsURL: "edge://extensions/",
+                devModeWhere: "in basso nella colonna a sinistra", loadButton: "Carica decompressa",
+                pinHow: "l'icona Estensioni (il pezzo di puzzle) accanto alla barra degli indirizzi, poi l'occhio accanto a Jobdossiers"),
+        Browser(id: "chrome", name: "Google Chrome", dir: "Library/Application Support/Google/Chrome", extensionsURL: "chrome://extensions/",
+                devModeWhere: "in alto a destra", loadButton: "Carica estensione non pacchettizzata",
+                pinHow: "l'icona Estensioni (il pezzo di puzzle) accanto alla barra degli indirizzi, poi la puntina accanto a Jobdossiers"),
     ]
 
     static func manifestURL(_ dir: String, home: URL) -> URL {
         home.appendingPathComponent(dir).appendingPathComponent("NativeMessagingHosts").appendingPathComponent("\(hostName).json")
     }
 
-    /// Stato complessivo per i browser presenti: configurato se tutti puntano a command, da aggiornare se uno punta altrove.
-    static func state(command: String, home: URL = URL(fileURLWithPath: NSHomeDirectory())) -> ClientState {
-        let fm = FileManager.default
-        let present = all.filter { fm.fileExists(atPath: home.appendingPathComponent($0.dir).path) }
-        if present.isEmpty { return .notInstalled }
-        var paths: [String?] = []
-        for b in present {
-            guard let data = fm.contents(atPath: manifestURL(b.dir, home: home).path) else { paths.append(nil); continue }
-            let o = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
-            paths.append(o?["path"] as? String ?? "")
-        }
-        if paths.allSatisfy({ $0 == nil }) { return .notConfigured }
-        if paths.contains(where: { $0 != nil && $0 != command }) { return .outdated }
-        return paths.contains(where: { $0 == nil }) ? .notConfigured : .configured
+    static func appInstalled(_ b: Browser) -> Bool {
+        ["/Applications", NSHomeDirectory() + "/Applications"].contains { FileManager.default.fileExists(atPath: "\($0)/\(b.name).app") }
     }
 
-    /// Nomi dei browser presenti, per i messaggi.
-    static func present(home: URL = URL(fileURLWithPath: NSHomeDirectory())) -> [String] {
-        all.filter { FileManager.default.fileExists(atPath: home.appendingPathComponent($0.dir).path) }.map(\.name)
+    /// Path scritto nel manifest dell'host per questo browser (nil se non collegato).
+    static func linkedPath(_ b: Browser, home: URL) -> String? {
+        guard let data = FileManager.default.contents(atPath: manifestURL(b.dir, home: home).path) else { return nil }
+        return (try? JSONSerialization.jsonObject(with: data) as? [String: Any])?["path"] as? String ?? ""
+    }
+
+    /// Versione e data di costruzione dell'estensione vista l'ultima volta in questo browser (azione hello del server).
+    static func seen(_ b: Browser, home: URL) -> (version: String, build: String)? {
+        let f = home.appendingPathComponent("Library/Application Support/Jobdossiers/estensione-\(b.id).json")
+        guard let data = FileManager.default.contents(atPath: f.path),
+              let o = try? JSONSerialization.jsonObject(with: data) as? [String: Any], let v = o["version"] as? String else { return nil }
+        return (v, o["build"] as? String ?? "")
+    }
+
+    /// Data di costruzione dell'estensione dentro questa app (build.json, scritto da build-app.sh).
+    static var bundledBuild: String {
+        guard let f = extensionFolder?.appendingPathComponent("build.json"), let data = try? Data(contentsOf: f) else { return "" }
+        return (try? JSONSerialization.jsonObject(with: data) as? [String: Any])?["built_at"] as? String ?? ""
+    }
+
+    /// «v0.2.3 · 23.11 14:05» (ora locale), come nel pannello dell'estensione.
+    static func label(version: String, build: String) -> String {
+        guard let d = ISO8601DateFormatter().date(from: build) else { return "v\(version)" }
+        let f = DateFormatter(); f.dateFormat = "dd.MM HH:mm"
+        return "v\(version) · \(f.string(from: d))"
+    }
+
+    /// Da aggiornare se cambia la versione o, a parità di versione (build locali), la data di costruzione.
+    static func state(_ b: Browser, command: String, appVersion: String = AppInfo.version, appBuild: String = bundledBuild,
+                      home: URL = URL(fileURLWithPath: NSHomeDirectory()), appInstalled: Bool? = nil) -> ExtensionState {
+        guard appInstalled ?? Self.appInstalled(b) else { return .browserMissing }
+        guard linkedPath(b, home: home) == command else { return .notLinked }
+        guard let s = seen(b, home: home) else { return .notLoaded }
+        let same = s.version == appVersion && (appBuild.isEmpty || s.build == appBuild)
+        let l = label(version: s.version, build: s.build)
+        return same ? .installed(l) : .outdated(l)
     }
 
     /// Esegue il server con --browser-install o --browser-remove. Nessun segreto passa di qui.
@@ -52,6 +91,14 @@ enum Browsers {
         }
     }
 
+    /// Apre la pagina delle estensioni nel browser indicato, non in quello predefinito.
+    static func openExtensionsPage(_ b: Browser) {
+        let p = Process()
+        p.executableURL = URL(fileURLWithPath: "/usr/bin/open")
+        p.arguments = ["-a", b.name, b.extensionsURL]
+        try? p.run()
+    }
+
     /// Cartella dell'estensione dentro l'app (build-app.sh).
     static var extensionFolder: URL? { Bundle.main.url(forResource: "estensione", withExtension: nil) }
 
@@ -60,6 +107,9 @@ enum Browsers {
     static func exportedFolder(home: URL = URL(fileURLWithPath: NSHomeDirectory())) -> URL {
         home.appendingPathComponent("Library/Application Support/Jobdossiers/estensione")
     }
+
+    /// Da incollare nella finestra di scelta del browser (⌘⇧G): con «~» si raggiunge la Libreria, che il Finder nasconde.
+    static let exportedPathForDialog = "~/Library/Application Support/Jobdossiers/estensione"
 
     static func exportExtension(from src: URL, to dst: URL) throws {
         let fm = FileManager.default

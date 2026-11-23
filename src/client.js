@@ -6,6 +6,7 @@ import { AAD, openDek, encObj, decObj, encBytes, decBytes } from './crypto.js';
 import { ApiError } from './api.js';
 import { findDuplicates, noteLog } from './dedupe.js';
 import { PREFS_KIND, cleanPrefs } from './prefs.js';
+import { record, buildContext, contextBlock, trimHistory, withPosting, MAX_CTX_SYS } from './dossi.js';
 
 /** Ordine di openapi.json (Status). 'preparing': analisi in corso, il portale la porta a 'to_send'. 'deleted': tolta dalla lista, ripristinabile.
  *  'interview' dal 28.10.2026 sostituisce hr_interview e tech_interview. */
@@ -417,6 +418,22 @@ export class Dossier {
         throw e;
       }
     }
+  }
+
+  /** Dossi (AI di sistema del portale, azione assistant): stesse candidature e stesso blocco dati di app.php, l'annuncio in visione
+   *  nella prima domanda. Senza consenso esplicito non parte nulla: le candidature decifrate passano in chiaro dal portale all'AI. */
+  async dossi({ messages, posting, first = false, consent = false } = {}) {
+    if (consent !== true) throw new ApiError('asst_consent', { message: 'Serve il consenso: con l\'AI di sistema le candidature decifrate e le domande passano in chiaro dal portale a Infomaniak.' });
+    const ok = Array.isArray(messages) && messages.length && messages.every(m => m && (m.role === 'user' || m.role === 'assistant') && typeof m.content === 'string' && m.content.trim())
+      && messages[messages.length - 1].role === 'user';
+    if (!ok) throw invalid('messages: elenco di {role: user|assistant, content}, l\'ultimo dell\'utente');
+    const msgs = messages.map(m => ({ role: m.role, content: m.content }));
+    const i = msgs.findIndex(m => m.role === 'user');
+    msgs[i] = { role: 'user', content: withPosting(msgs[i].content, posting && typeof posting === 'object' ? posting : null) };
+    const { items } = await this.load();
+    const ctx = buildContext(items.filter(x => !x.bad).map(x => record(x.row, x.d)), { max: MAX_CTX_SYS });
+    const j = await this.api.call('assistant', { context: contextBlock(this.today(), ctx), messages: trimHistory(msgs).msgs, first: first === true, consent: true });
+    return { text: String(j.text || ''), truncated: j.truncated === true, usage: j.usage ?? null, applications: ctx.included };
   }
 
   async quota() {

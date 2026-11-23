@@ -13,6 +13,7 @@ dotnet publish src/Jobdossiers.Win -c Release -r win-x64 --self-contained \
   -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:EnableCompressionInSingleFile=true -p:DebugType=none -o "$OUT"
 cp ../dist/jobdossiers-mcp-windows-x64.exe "$OUT/jobdossiers-mcp.exe"
 cp -R ../extension "$OUT/estensione"
+printf '{"built_at":"%s","commit":"%s"}\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$(git -C .. rev-parse --short HEAD 2>/dev/null || echo sviluppo)" > "$OUT/estensione/build.json"
 cat > "$OUT/LEGGIMI.txt" <<'EOF'
 Jobdossiers per Windows (prototipo)
 

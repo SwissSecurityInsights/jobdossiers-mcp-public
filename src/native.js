@@ -1,7 +1,9 @@
 /* Native messaging di Chrome ed Edge: l'estensione «Jobdossiers» (extension/) parla con questo eseguibile, che cifra e salva come per i client MCP.
  * Il browser avvia l'eseguibile indicato nel manifest dell'host passando come argomento l'origine dell'estensione (chrome-extension://<id>/);
  * i messaggi sono JSON UTF-8 preceduti dalla lunghezza (uint32 little endian) su stdin e stdout.
- * Solo quattro azioni, nessun'altra: status, find_duplicates, create e preferences (sola lettura, per il confronto con l'annuncio nel pannello). La chiave resta nel Portachiavi o in DPAPI: l'estensione non la vede mai. */
+ * Solo quattro azioni, nessun'altra: status, find_duplicates, create e preferences (sola lettura, per il confronto con l'annuncio nel pannello),
+ * più hello: l'estensione dice in quale browser e con quale versione è caricata (un file per browser, letto dalle app),
+ * e dossi: domande a Dossi, l'assistente AI di Jobdossiers (esperimento; solo con consenso, vedi src/dossi.js). La chiave resta nel Portachiavi o in DPAPI: l'estensione non la vede mai. */
 import { homedir } from 'node:os';
 import { join, dirname, basename } from 'node:path';
 import { mkdir, writeFile, rm, access } from 'node:fs/promises';
@@ -43,9 +45,40 @@ export function decoder(onMessage, onError) {
   };
 }
 
+/** Dove l'estensione lascia «sono caricata qui»: un file per browser, letto dalle app per mostrare lo stato (i dati dei browser
+ *  non sono leggibili dalle app su macOS). Contiene solo browser, versione e ora: niente dati personali. */
+export function seenDir({ platform = process.platform, env = process.env, home = homedir() } = {}) {
+  if (platform === 'darwin') return join(home, 'Library', 'Application Support', 'Jobdossiers');
+  if (platform === 'win32') return join(env.APPDATA || join(home, 'AppData', 'Roaming'), 'Jobdossiers');
+  return join(env.XDG_CONFIG_HOME || join(home, '.config'), 'jobdossiers');
+}
+export const SEEN_BROWSERS = ['edge', 'chrome', 'chromium'];
+
+async function hello(args, opts) {
+  const browser = SEEN_BROWSERS.includes(args.browser) ? args.browser : null;
+  const version = /^\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(String(args.version ?? '')) ? args.version : null;
+  const build = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/.test(String(args.build ?? '')) ? args.build : '';
+  if (!browser || !version) throw new ApiError('invalid_value', { message: 'browser o versione non validi' });
+  const dir = seenDir(opts);
+  await mkdir(dir, { recursive: true });
+  await writeFile(join(dir, `estensione-${browser}.json`), JSON.stringify({ browser, version, build, seen_at: new Date().toISOString() }) + '\n');
+  return { recorded: true };
+}
+
 /** Esegue un messaggio {id, action, args} con gli strumenti MCP. Risposta {id, ok: true, result} oppure {id, ok: false, error, message}. */
-export async function handleMessage(msg, tools) {
+export async function handleMessage(msg, tools, opts = {}) {
   const id = msg && typeof msg === 'object' ? msg.id ?? null : null;
+  if (msg?.action === 'dossi' && opts.dossi) {          // Dossi dal pannello (esperimento): non è uno strumento MCP
+    try { return { id, ok: true, result: await opts.dossi(msg.args && typeof msg.args === 'object' ? msg.args : {}) }; }
+    catch (e) {
+      return e instanceof ApiError ? { id, ok: false, error: e.code, message: e.message, ...(e.retryAfter !== undefined && { retry_after_seconds: e.retryAfter }) }
+        : { id, ok: false, error: 'internal', message: String(e?.message || e).slice(0, 300) };
+    }
+  }
+  if (msg?.action === 'hello') {          // «sono caricata in questo browser, con questa versione» (background.js)
+    try { return { id, ok: true, result: await hello(msg.args && typeof msg.args === 'object' ? msg.args : {}, opts) }; }
+    catch (e) { return { id, ok: false, error: e.code || 'internal', message: String(e.message).slice(0, 300) }; }
+  }
   const name = ACTIONS[msg?.action];
   if (!name || !Object.hasOwn(ACTIONS, msg.action)) return { id, ok: false, error: 'unknown_action', message: 'Azione non ammessa' };
   const tool = tools.find(t => t.name === name);
@@ -62,12 +95,12 @@ export async function handleMessage(msg, tools) {
 }
 
 /** Serve l'estensione su stdin/stdout finché il browser chiude stdin. Un'origine non ammessa riceve un solo errore e nient'altro. */
-export function serveNative({ origin, tools, input = process.stdin, output = process.stdout }) {
+export function serveNative({ origin, tools, input = process.stdin, output = process.stdout, opts = {} }) {
   const send = o => output.write(encode(o));
   if (!ALLOWED_ORIGINS.includes(origin)) { send({ id: null, ok: false, error: 'forbidden_origin', message: 'Estensione non riconosciuta' }); return Promise.resolve(); }
   // Un messaggio alla volta: due creazioni dello stesso annuncio non passano insieme il controllo dei doppioni.
   let queue = Promise.resolve();
-  const onChunk = decoder(msg => { queue = queue.then(() => handleMessage(msg, tools)).then(send); },
+  const onChunk = decoder(msg => { queue = queue.then(() => handleMessage(msg, tools, opts)).then(send); },
     e => { queue = queue.then(() => send({ id: null, ok: false, error: e.code, message: e.message })); });
   input.on('data', onChunk);
   return new Promise(resolve => input.on('end', () => queue.then(resolve)));

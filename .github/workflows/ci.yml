@@ -1,9 +1,14 @@
 name: CI
+# Repo di sviluppo (privato): i test si fanno in locale (scripts/check.sh) e qui partono solo a mano, per non consumare minuti.
+# Repo pubblico (jobdossiers-mcp-public, minuti gratuiti): automatici su main e sulle PR, ultimo controllo prima di una release.
 on:
   push:
+    branches: [main]
   pull_request:
+  workflow_dispatch:
 jobs:
   test:
+    if: github.repository == 'SwissSecurityInsights/jobdossiers-mcp-public' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -11,12 +16,14 @@ jobs:
         with: { node-version: 22 }
       - run: npm test
   mac:
+    if: github.repository == 'SwissSecurityInsights/jobdossiers-mcp-public' || github.event_name == 'workflow_dispatch'
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
       - run: swift test
         working-directory: mac
   windows:
+    if: github.repository == 'SwissSecurityInsights/jobdossiers-mcp-public' || github.event_name == 'workflow_dispatch'
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4

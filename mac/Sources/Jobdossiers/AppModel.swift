@@ -121,35 +121,44 @@ final class AppModel: ObservableObject {
 
     // MARK: estensione per Chrome ed Edge
 
-    @Published private(set) var browserState: ClientState = .notInstalled
+    @Published private(set) var extensionStates: [String: ExtensionState] = [:]
     @Published private(set) var browserMessage: String?
+    /// Finestra guidata aperta per un browser (installazione o aggiornamento).
+    @Published var guide: GuideTarget?
 
     func refreshBrowsers() {
-        guard let cmd = clientCommand else { browserState = .notInstalled; return }
-        browserState = Browsers.state(command: cmd)
+        guard let cmd = clientCommand else { extensionStates = [:]; return }
+        extensionStates = Dictionary(uniqueKeysWithValues: Browsers.all.map { ($0.id, Browsers.state($0, command: cmd)) })
     }
 
-    func configureBrowsers(_ on: Bool) {
-        guard let cmd = clientCommand else { return }
+    /// Tutto quello che si può fare da qui, poi la guida per i due gesti nel browser:
+    /// collega il browser, copia l'estensione in una cartella normale, mette il percorso negli appunti,
+    /// apre la pagina delle estensioni di QUEL browser e la cartella nel Finder.
+    func startInstall(_ b: Browser) {
+        guard let cmd = clientCommand, let src = Browsers.extensionFolder else { browserMessage = "Server o estensione non inclusi nell'app."; return }
+        let update: Bool
+        if case .outdated = extensionStates[b.id] { update = true } else { update = false }
         do {
-            try Browsers.run(cmd, on ? "--browser-install" : "--browser-remove")
-            browserMessage = on ? "Collegato a \(Browsers.present().joined(separator: " e ")). Ora carica l'estensione nel browser." : "Collegamento con i browser tolto."
+            try Browsers.run(cmd, "--browser-install")
+            try Browsers.exportExtension(from: src, to: Browsers.exportedFolder())
         } catch {
             browserMessage = error.localizedDescription
+            return
         }
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(Browsers.exportedPathForDialog, forType: .string)
+        Browsers.openExtensionsPage(b)
+        if !update { NSWorkspace.shared.activateFileViewerSelecting([Browsers.exportedFolder()]) }
+        browserMessage = nil
+        guide = GuideTarget(browser: b, update: update)
         refreshBrowsers()
     }
 
-    func showExtensionFolder() {
-        guard let src = Browsers.extensionFolder else { return }
-        let dst = Browsers.exportedFolder()
-        do {
-            try Browsers.exportExtension(from: src, to: dst)
-            NSWorkspace.shared.activateFileViewerSelecting([dst])
-            browserMessage = "Cartella dell'estensione: \(dst.path)"
-        } catch {
-            browserMessage = "Copia dell'estensione non riuscita: \(error.localizedDescription)"
-        }
+    func unlinkBrowsers() {
+        guard let cmd = clientCommand else { return }
+        do { try Browsers.run(cmd, "--browser-remove"); browserMessage = "Collegamento con i browser tolto: l'estensione non potrà più salvare." }
+        catch { browserMessage = error.localizedDescription }
+        refreshBrowsers()
     }
 
     func copyClaudeCodeCommand() {
@@ -158,4 +167,10 @@ final class AppModel: ObservableObject {
         NSPasteboard.general.setString(Clients.claudeCodeCommand(cmd), forType: .string)
         clientMessage = "Comando per Claude Code copiato: incollalo nel Terminale."
     }
+}
+
+struct GuideTarget: Identifiable {
+    let browser: Browser
+    let update: Bool
+    var id: String { browser.id }
 }

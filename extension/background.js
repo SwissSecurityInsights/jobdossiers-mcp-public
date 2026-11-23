@@ -10,3 +10,20 @@ function openAndRead(tab) {
 
 chrome.action.onClicked.addListener(openAndRead);
 chrome.commands.onCommand.addListener((command, tab) => { if (command === 'leggi-pagina') openAndRead(tab); });
+
+/** In quale browser siamo: Edge e Chrome si dichiarano nei «brands»; altrimenti Chromium. */
+function browserName() {
+  const brands = (navigator.userAgentData?.brands || []).map(b => b.brand);
+  if (brands.includes('Microsoft Edge') || /\bEdg\//.test(navigator.userAgent)) return 'edge';
+  if (brands.includes('Google Chrome')) return 'chrome';
+  return 'chromium';
+}
+
+/** «Sono caricata qui, con questa versione»: l'app lo mostra nella scheda Browser (non può leggere da sola i dati dei browser). */
+async function hello() {
+  let build = '';
+  try { build = (await (await fetch(chrome.runtime.getURL('build.json'))).json()).built_at || ''; } catch { /* caricata dal repo: niente data */ }
+  chrome.runtime.sendNativeMessage('ch.jobdossiers.mcp', { id: 0, action: 'hello', args: { browser: browserName(), version: chrome.runtime.getManifest().version, build } }, () => void chrome.runtime.lastError);
+}
+chrome.runtime.onInstalled.addListener(hello);      // installazione, aggiornamento, «Ricarica»
+chrome.runtime.onStartup.addListener(hello);        // ogni avvio del browser

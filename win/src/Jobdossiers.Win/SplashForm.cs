@@ -9,7 +9,7 @@ sealed class SplashForm : Form
     {
         FormBorderStyle = FormBorderStyle.None; StartPosition = FormStartPosition.CenterScreen; ShowInTaskbar = false; TopMost = true;
         BackColor = Color.White; Size = new Size(420, 280); Padding = new Padding(24);
-        var version = typeof(SplashForm).Assembly.GetName().Version?.ToString(3) ?? "sviluppo";
+        var version = AppInfo.Version;
         var layout = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 5 };
         layout.Controls.Add(new PictureBox { Image = AppIcon.Large(64), SizeMode = PictureBoxSizeMode.CenterImage, Dock = DockStyle.Fill, Height = 72 });
         layout.Controls.Add(Centered("Jobdossiers", new Font("Segoe UI", 18, FontStyle.Bold), Color.Black));

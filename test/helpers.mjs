@@ -21,7 +21,7 @@ export async function startMock(fx, seeds = SEEDS()) {
   let n = 0;
   const mk = async s => ({ id: 'r' + (++n), pos: n, status: 'to_send', applied_on: null, status_changed_on: null, automation: '', rav: '', jobroom_registered_on: null, version: 1, enc: s.rawEnc ?? await encObj(fx.dek, s.d, AAD.app), ...Object.fromEntries(Object.entries(s).filter(([k]) => PLAIN.includes(k) || k === 'ro')) });
   for (const s of seeds) rows.push(await mk(s));
-  const state = { rows, requests, conflictOnce: false, docs: [], uploads: [], agenda: [], files: new Map(), net: [], netDenied: false };
+  const state = { rows, requests, conflictOnce: false, docs: [], uploads: [], agenda: [], files: new Map(), net: [], netDenied: false, assistant: [] };
   let ag = 0;
   const server = http.createServer((req, res) => {
     const chunks = [];
@@ -57,6 +57,11 @@ export async function startMock(fx, seeds = SEEDS()) {
         return res.end(Buffer.from(f));
       }
       if (action === 'net_list') return state.netDenied ? send(403, { ok: false, error: 'agent_scope' }) : send(200, { ok: true, items: state.net });
+      if (action === 'assistant') {          // Dossi con l'AI di sistema (Assistant::chat): qui risponde con quello che ha ricevuto
+        const b = JSON.parse(body); state.assistant.push(b);
+        if (b.consent !== true) return send(400, { ok: false, error: 'err.asst_consent' });
+        return send(200, { ok: true, text: `Ricevute ${b.messages.length} domande.`, truncated: false, usage: { used: state.assistant.length, limit: 100 } });
+      }
       if (action === 'agenda_list') return send(200, { ok: true, items: state.agenda });
       if (action === 'agenda_save') {
         const b = JSON.parse(body);

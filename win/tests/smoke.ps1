@@ -72,7 +72,7 @@ Start-Sleep 2; Shot '1-avvio-splash'
 Start-Sleep 6; Shot '2-impostazioni'
 $proc.Refresh()
 Check (-not $proc.HasExited) "app in esecuzione dopo 8 secondi"
-Check ($proc.MainWindowTitle -eq 'Impostazioni Jobdossiers') "finestra delle impostazioni aperta ($($proc.MainWindowTitle))"
+Check ($proc.MainWindowTitle -eq "Impostazioni Jobdossiers $v") "finestra delle impostazioni aperta, con la versione ($($proc.MainWindowTitle))"
 $second = Start-Process $app -PassThru; Start-Sleep 3
 Check ($second.HasExited) "seconda istanza: esce subito"
 Check (@(Get-Process Jobdossiers -ErrorAction SilentlyContinue).Count -eq 1) "una sola istanza in esecuzione"

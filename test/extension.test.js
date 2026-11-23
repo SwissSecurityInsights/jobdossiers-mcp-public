@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { createHash } from 'node:crypto';
-import { fields, jobPostings, jobUrl, splitTitle } from '../extension/parse.js';
+import { fields, jobPostings, jobUrl, splitTitle, splitPlace } from '../extension/parse.js';
 import { detectJob } from '../extension/detect.js';
 import { EXTENSION_IDS } from '../src/native.js';
 
@@ -105,4 +105,18 @@ test('estrazione: ruolo, impresa e descrizione dalle fonti in ordine, mai il nom
   assert.equal(c.company, 'Acme');
   for (const [a, b] of [['Beispiel AG – Karriere', 'Beispiel AG'], ['Jobs bei Muster AG', 'Muster AG'], ['Rotondo SA | Lavora con noi', 'Rotondo SA'], ['Acme SA', 'Acme SA']])
     assert.equal(fields({ url: 'https://x.example/j', og_site: a }).company, b, a);
+});
+
+test('estrazione: riquadro dell\'annuncio e sezione «About the job» (LinkedIn senza classi note), luogo e paese', () => {
+  const raw = { url: 'https://www.linkedin.com/jobs/search-results/?currentJobId=3912345678', title: 'Head of Information Security | Nordlicht Fintech | LinkedIn', og_site: 'LinkedIn',
+    top: { title: 'Head of Information Security', company: 'Nordlicht Fintech', location: 'Lugano, Ticino, Switzerland', text: 'Nordlicht Fintech\nHead of Information Security\n✓ Hybrid ✓ Full-time' },
+    about: 'About Us\nUMO is a FinTech venture.', best: 'Jobs based on your preferences ... Muster AG ...', main: 'tutta la pagina' };
+  const f = fields(raw);
+  assert.deepEqual([f.role, f.company, f.employer_zip_city, f.employer_country, f.job_desc], ['Head of Information Security', 'Nordlicht Fintech', 'Lugano', 'CH', 'About Us\nUMO is a FinTech venture.']);
+  assert.deepEqual(f.sources, { role: 'riquadro dell\'annuncio', company: 'riquadro dell\'annuncio', job_desc: 'sezione «About the job»' });
+  assert.deepEqual(splitPlace('Zurich, Zurich, Switzerland (Hybrid)'), { city: 'Zurich', country: 'CH' });
+  assert.deepEqual(splitPlace('Lugano, Svizzera'), { city: 'Lugano', country: 'CH' });
+  assert.deepEqual(splitPlace('Switzerland'), { city: '', country: 'CH' });
+  assert.deepEqual(splitPlace('Buchs (SG)'), { city: 'Buchs (SG)', country: '' }, 'paese non indicato: non si inventa');
+  assert.deepEqual(splitPlace(''), { city: '', country: '' });
 });

@@ -21,6 +21,8 @@ cp "../dist/jobdossiers-mcp-$T" "$APP/Contents/Resources/jobdossiers-mcp"
 cp AppIcon.icns "$APP/Contents/Resources/AppIcon.icns"     # logo JD del portale (assets/icon.svg)
 # Estensione per Chrome ed Edge (prototipo: si carica come estensione non pacchettizzata da qui)
 cp -R ../extension "$APP/Contents/Resources/estensione"
+# Data di costruzione: il pannello la mostra accanto alla versione e l'app la confronta con quella dell'estensione caricata nel browser
+printf '{"built_at":"%s","commit":"%s"}\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$(git -C .. rev-parse --short HEAD 2>/dev/null || echo sviluppo)" > "$APP/Contents/Resources/estensione/build.json"
 codesign --force --sign - "$APP/Contents/Resources/jobdossiers-mcp"
 
 codesign --force --sign - "$APP"
