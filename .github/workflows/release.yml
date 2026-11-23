@@ -56,6 +56,14 @@ jobs:
         run: |
           sh win/build.sh
           node scripts/build.mjs linux-x64
+      - name: Pacchetto firmato dell'estensione (aggiornamento online, src/update.js)
+        env:
+          KEY: ${{ secrets.EXTENSION_SIGNING_KEY }}
+        run: |
+          if [ -n "$KEY" ]; then node scripts/extension-bundle.mjs dist/Jobdossiers-estensione.json.gz --sign-env KEY
+          else echo "Secret EXTENSION_SIGNING_KEY assente: niente pacchetto per l'aggiornamento online"; fi
+      - uses: actions/upload-artifact@v4
+        with: { name: estensione, path: "dist/Jobdossiers-estensione.json.gz\ndist/Jobdossiers-estensione.json.gz.sig", if-no-files-found: ignore }
       - uses: actions/upload-artifact@v4
         with: { name: windows, path: "dist/Jobdossiers-Setup-*-x64.exe\ndist/jobdossiers-mcp-windows-x64.exe\ndist/jobdossiers-mcp-linux-x64", if-no-files-found: error }
   publish:
@@ -69,12 +77,22 @@ jobs:
     steps:
       - uses: actions/download-artifact@v4
         with: { path: dist, merge-multiple: true }
-      - name: Nomi senza versione (link fissi …/releases/latest/download/<nome>) e somme di controllo
+      - name: Nomi senza versione (link fissi …/releases/latest/download/<nome>)
         run: |
           cd dist
           mv Jobdossiers-*-mac-arm64.pkg Jobdossiers-mac-arm64.pkg
           mv Jobdossiers-Setup-*-x64.exe Jobdossiers-Setup-x64.exe
-          sha256sum * > SHA256SUMS && cat SHA256SUMS
+      - uses: actions/checkout@v4
+        with: { path: src }
+      - name: latest.json firmato (aggiornamento automatico delle app, src/update.js)
+        env:
+          KEY: ${{ secrets.EXTENSION_SIGNING_KEY }}
+        run: |
+          if [ -n "$KEY" ]; then (cd src && node scripts/release-manifest.mjs ../dist --sign-env KEY)
+          else echo "Secret EXTENSION_SIGNING_KEY assente: niente latest.json"; fi
+      - name: Somme di controllo
+        run: |
+          cd dist && sha256sum * > SHA256SUMS && cat SHA256SUMS
       - uses: actions/attest-build-provenance@v2
         with: { subject-path: 'dist/*' }
       - name: Release
@@ -88,6 +106,8 @@ jobs:
           - **Windows:** `Jobdossiers-Setup-x64.exe`, per l'utente corrente, senza diritti di amministratore. SmartScreen: «Ulteriori informazioni» → «Esegui comunque».
           - **Estensione per Chrome ed Edge (prototipo):** è compresa in entrambi gli installer. Mac: nell'app, sezione «Estensione per Chrome ed Edge», «Configura» e «Mostra cartella»; Windows: è già collegata, cartella `%LOCALAPPDATA%\Jobdossiers\estensione`. Nel browser: Estensioni → modalità sviluppatore → «Carica decompressa» → quella cartella.
           - **Solo server MCP:** `jobdossiers-mcp-<sistema>`, per configurarlo a mano in un client MCP.
+
+          L'estensione si aggiorna anche da sola (pacchetto firmato `Jobdossiers-estensione.json.gz`, verificato dall'app prima di installarlo).
 
           Link sempre all'ultima versione: `https://github.com/${{ github.repository }}/releases/latest/download/Jobdossiers-mac-arm64.pkg` e `…/Jobdossiers-Setup-x64.exe`.
 

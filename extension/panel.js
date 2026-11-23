@@ -282,7 +282,29 @@ $('#dossi-q').addEventListener('keydown', e => { if (e.key === 'Enter' && (e.met
 $('#dossi-new').addEventListener('click', dossiReset);
 for (const b of document.querySelectorAll('#dossi-quick .chip')) b.addEventListener('click', () => dossiAsk(b.textContent));
 
+// ── Aggiornamento online dell'estensione (background.js e src/update.js) ──
+const UPD_REASON = {
+  up_to_date: 'L\'estensione è già aggiornata.', no_bundle: 'Nessun aggiornamento online disponibile per ora.',
+  app_too_old: 'C\'è un\'estensione più nuova, ma serve prima aggiornare l\'app Jobdossiers (pacchetto completo).',
+  not_managed: 'Questa estensione non è nella cartella preparata dall\'app: aggiornala dall\'app (scheda Browser).',
+};
+async function updateUi() {
+  const s = await chrome.storage.local.get({ autoUpdate: true, justUpdated: '' });
+  $('#autoupd').checked = s.autoUpdate;
+  if (s.justUpdated) { show(`Estensione aggiornata alla v${s.justUpdated}.`, 'ok'); await chrome.storage.local.set({ justUpdated: '' }); }
+}
+$('#autoupd').addEventListener('change', e => chrome.storage.local.set({ autoUpdate: e.target.checked }));
+$('#updnow').addEventListener('click', async () => {
+  const b = $('#updnow'); b.disabled = true; b.textContent = 'Controllo…';
+  const r = await chrome.runtime.sendMessage({ type: 'update-check' }).catch(e => ({ ok: false, message: String(e?.message || e) }));
+  b.disabled = false; b.textContent = 'Controlla aggiornamenti';
+  if (r?.ok && r.result.updated) show(`Aggiornamento alla v${r.result.version}: l'estensione si ricarica…`, 'ok');
+  else if (r?.ok) show(UPD_REASON[r.result.reason] || 'Nessun aggiornamento.', 'info');
+  else show('Controllo non riuscito: ' + (r?.message || r?.error || 'errore'), 'err');
+});
+
 async function main() {
+  updateUi().catch(() => {});
   $('#ver').textContent = 'v' + chrome.runtime.getManifest().version;      // la versione dell'estensione caricata nel browser
   // e la data di costruzione (build.json, scritto da build-app.sh e win/build.sh): con la stessa versione distingue le build locali
   Promise.resolve().then(() => fetch(chrome.runtime.getURL('build.json'))).then(r => r.json()).then(b => {

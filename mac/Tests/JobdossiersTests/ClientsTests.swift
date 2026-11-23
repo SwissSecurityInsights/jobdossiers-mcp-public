@@ -135,6 +135,8 @@ final class ClientsTests: XCTestCase {
         XCTAssertEqual(Browsers.state(edge, command: "/a/server", appVersion: "0.2.2", appBuild: "2026-11-23T10:00:00Z", home: home, appInstalled: true), .installed(l))
         XCTAssertEqual(Browsers.state(edge, command: "/a/server", appVersion: "0.2.2", appBuild: "2026-11-23T14:05:00Z", home: home, appInstalled: true), .outdated(l), "stessa versione, build più nuova nell'app")
         XCTAssertEqual(Browsers.state(edge, command: "/a/server", appVersion: "0.2.2", appBuild: "", home: home, appInstalled: true), .installed(l), "app senza build.json: conta la versione")
+        XCTAssertEqual(Browsers.state(edge, command: "/a/server", appVersion: "0.2.1", appBuild: "2026-11-24T00:00:00Z", home: home, appInstalled: true), .installed(l), "più nuova dell'app (aggiornata online): va bene")
+        XCTAssertEqual(Browsers.state(edge, command: "/a/server", appVersion: "0.2.2", appBuild: "2026-11-22T00:00:00Z", home: home, appInstalled: true), .installed(l), "stessa versione, data più recente nel browser")
         XCTAssertEqual(Browsers.state(chrome, command: "/a/server", appVersion: "0.2.2", home: home, appInstalled: true), .notLinked, "Chrome ha il suo stato")
     }
 
@@ -152,5 +154,22 @@ final class ClientsTests: XCTestCase {
         try Browsers.exportExtension(from: src, to: dst)
         XCTAssertEqual(try String(contentsOf: dst.appendingPathComponent("manifest.json"), encoding: .utf8), "2")
         XCTAssertFalse(fm.fileExists(atPath: dst.appendingPathComponent("vecchio").path))
+    }
+
+    /// La copia dell'app non sostituisce un'estensione più nuova arrivata online.
+    func testCopiaNonTornaIndietro() throws {
+        let fm = FileManager.default, tmp = fm.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? fm.removeItem(at: tmp) }
+        let src = tmp.appendingPathComponent("app"), dst = tmp.appendingPathComponent("estensione")
+        for (d, v, b) in [(src, "0.2.6", "2026-11-23T10:00:00Z"), (dst, "0.2.7", "2026-11-24T10:00:00Z")] {
+            try fm.createDirectory(at: d, withIntermediateDirectories: true)
+            try Data(#"{"version":"\#(v)"}"#.utf8).write(to: d.appendingPathComponent("manifest.json"))
+            try Data(#"{"built_at":"\#(b)"}"#.utf8).write(to: d.appendingPathComponent("build.json"))
+        }
+        try Browsers.exportExtension(from: src, to: dst)
+        XCTAssertEqual(Browsers.folderBuild(dst)?.version, "0.2.7", "resta quella più nuova")
+        try Data(#"{"version":"0.2.8"}"#.utf8).write(to: src.appendingPathComponent("manifest.json"))
+        try Browsers.exportExtension(from: src, to: dst)
+        XCTAssertEqual(Browsers.folderBuild(dst)?.version, "0.2.8", "l'app più nuova sostituisce")
     }
 }

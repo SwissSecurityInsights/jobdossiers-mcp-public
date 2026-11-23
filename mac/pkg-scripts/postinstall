@@ -1,0 +1,8 @@
+#!/bin/sh
+# Dopo l'installazione (anche come aggiornamento lanciato dall'app, che si è chiusa) riapre Jobdossiers per l'utente collegato.
+# Gira come root: l'app va aperta come utente, nella sua sessione.
+u=$(stat -f%Su /dev/console 2>/dev/null)
+if [ -n "$u" ] && [ "$u" != "root" ] && [ "$u" != "loginwindow" ]; then
+  launchctl asuser "$(id -u "$u")" sudo -u "$u" /usr/bin/open -g /Applications/Jobdossiers.app >/dev/null 2>&1 || true
+fi
+exit 0

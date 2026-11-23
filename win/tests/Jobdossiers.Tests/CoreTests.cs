@@ -290,4 +290,19 @@ public class CoreTests
         Assert.Null(CheckResult.Parse("""{"ok":false}"""));
         Assert.Equal("""{"used":3}""", CheckResult.Parse("""{"ok":true,"quota":{"used":3}}""")!.Quota);
     }
+
+    [Fact]
+    public void ImpostazioniAggiornamento()
+    {
+        var f = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString(), "settings.json");
+        Assert.True(AppSettings.AutoUpdate(f));                          // predefinito: attivo
+        Assert.Null(AppSettings.LastUpdateCheck(f));
+        AppSettings.SetClaudeConfig(@"C:\x\claude_desktop_config.json", f);
+        AppSettings.SetAutoUpdate(false, f);
+        var t = new DateTime(2026, 11, 23, 20, 0, 0, DateTimeKind.Utc);
+        AppSettings.SetLastUpdateCheck(t, f);
+        Assert.False(AppSettings.AutoUpdate(f));
+        Assert.Equal(t, AppSettings.LastUpdateCheck(f)!.Value.ToUniversalTime());
+        Assert.Equal(@"C:\x\claude_desktop_config.json", AppSettings.ClaudeConfig(f));   // le altre impostazioni restano
+    }
 }

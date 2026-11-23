@@ -18,9 +18,46 @@ final class AppModel: ObservableObject {
 
     init() {
         timer = Timer.scheduledTimer(withTimeInterval: 3600, repeats: true) { [weak self] _ in
-            Task { @MainActor in await self?.check() }
+            Task { @MainActor in await self?.check(); await self?.checkAppUpdate() }
         }
-        Task { await check() }
+        Task { await check(); await checkAppUpdate() }
+    }
+
+    // MARK: aggiornamento dell'app (latest.json firmato della release, verificato dal server)
+
+    @Published private(set) var updateVersion: String?
+    @Published private(set) var updateMessage: String?
+    @Published private(set) var updating = false
+    @Published var autoUpdate = UserDefaults.standard.object(forKey: "autoUpdate") as? Bool ?? true {
+        didSet { UserDefaults.standard.set(autoUpdate, forKey: "autoUpdate") }
+    }
+    private var lastUpdateCheck: Date? { UserDefaults.standard.object(forKey: "lastUpdateCheck") as? Date }
+
+    /// All'avvio e poi una volta al giorno (se attivo), oppure a richiesta.
+    func checkAppUpdate(force: Bool = false) async {
+        if !force && (!autoUpdate || (lastUpdateCheck.map { Date().timeIntervalSince($0) < 24 * 3600 } ?? false)) { return }
+        UserDefaults.standard.set(Date(), forKey: "lastUpdateCheck")
+        do {
+            updateVersion = try await Server.appUpdateCheck()
+            updateMessage = updateVersion.map { "Disponibile la versione \($0)." } ?? "L'app è aggiornata (\(AppInfo.version))."
+        } catch {
+            updateMessage = "Controllo non riuscito: \(error.localizedDescription)"
+        }
+    }
+
+    /// Scarica e verifica l'installer, lo apre (macOS chiede la password: l'app è in Applicazioni) e chiude l'app;
+    /// a fine installazione il pacchetto la riapre (postinstall in mac/build-pkg.sh).
+    func installUpdate() async {
+        updating = true
+        defer { updating = false }
+        do {
+            let pkg = try await Server.appUpdateDownload()
+            NSWorkspace.shared.open(pkg)
+            try? await Task.sleep(nanoseconds: 1_500_000_000)
+            NSApp.terminate(nil)
+        } catch {
+            updateMessage = "Aggiornamento non riuscito: \(error.localizedDescription)"
+        }
     }
 
     var resolvedServer: String? { Server.resolve()?.path }

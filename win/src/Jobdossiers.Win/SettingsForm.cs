@@ -38,6 +38,21 @@ sealed class SettingsForm : Form
         root.Controls.Add(Group("Client MCP", clients, clientMsg,
             Note("I client puntano al server installato in " + Path.GetDirectoryName(ServerHost.Installed) + ". Dopo Configura riavvia il client.")));
 
+        var auto = new CheckBox { Text = "Controlla gli aggiornamenti ogni giorno", AutoSize = true, Checked = AppSettings.AutoUpdate() };
+        auto.CheckedChanged += (_, _) => { try { AppSettings.SetAutoUpdate(auto.Checked); } catch (Exception ex) { MessageBox.Show(this, ex.Message, "Jobdossiers"); } };
+        var updMsg = Lbl(app.UpdateVersion is null ? "" : $"Disponibile la versione {app.UpdateVersion}.");
+        var updCheck = new Button { Text = "Controlla ora", AutoSize = true };
+        var updInstall = new Button { Text = app.UpdateVersion is null ? "Installa" : $"Installa la versione {app.UpdateVersion}", AutoSize = true, Enabled = app.UpdateVersion is not null };
+        updCheck.Click += async (_, _) =>
+        {
+            updCheck.Enabled = false; updMsg.Text = "Controllo…";
+            updMsg.Text = await app.CheckAppUpdateAsync(force: true); updCheck.Enabled = true;
+            updInstall.Enabled = app.UpdateVersion is not null; updInstall.Text = app.UpdateVersion is null ? "Installa" : $"Installa la versione {app.UpdateVersion}";
+        };
+        updInstall.Click += async (_, _) => { updInstall.Enabled = false; updMsg.Text = "Scarico l'aggiornamento…"; var m = await app.InstallUpdateAsync(); if (m != "") { updMsg.Text = m; updInstall.Enabled = true; } };
+        root.Controls.Add(Group("Versione e aggiornamenti", Lbl("Versione " + AppInfo.Version), auto, Row(updCheck, updInstall), updMsg,
+            Note("Gli aggiornamenti arrivano dalla release pubblica su GitHub e si installano solo se la firma è valida, senza diritti di amministratore; poi l'app si riapre.")));
+
         root.Controls.Add(Group("Server", Lbl("In uso: " + (File.Exists(ServerHost.Installed) ? ServerHost.Installed : "non installato")),
             Note(app.ServerWarning ?? "Il server è aggiornato.")));
         Controls.Add(root);

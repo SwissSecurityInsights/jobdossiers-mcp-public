@@ -3,7 +3,8 @@
  * i messaggi sono JSON UTF-8 preceduti dalla lunghezza (uint32 little endian) su stdin e stdout.
  * Solo quattro azioni, nessun'altra: status, find_duplicates, create e preferences (sola lettura, per il confronto con l'annuncio nel pannello),
  * più hello: l'estensione dice in quale browser e con quale versione è caricata (un file per browser, letto dalle app),
- * e dossi: domande a Dossi, l'assistente AI di Jobdossiers (esperimento; solo con consenso, vedi src/dossi.js). La chiave resta nel Portachiavi o in DPAPI: l'estensione non la vede mai. */
+ * dossi: domande a Dossi, l'assistente AI di Jobdossiers (esperimento; solo con consenso, vedi src/dossi.js),
+ * e update: aggiornamento online dell'estensione da un pacchetto firmato (vedi src/update.js). La chiave resta nel Portachiavi o in DPAPI: l'estensione non la vede mai. */
 import { homedir } from 'node:os';
 import { join, dirname, basename } from 'node:path';
 import { mkdir, writeFile, rm, access } from 'node:fs/promises';
@@ -68,6 +69,11 @@ async function hello(args, opts) {
 /** Esegue un messaggio {id, action, args} con gli strumenti MCP. Risposta {id, ok: true, result} oppure {id, ok: false, error, message}. */
 export async function handleMessage(msg, tools, opts = {}) {
   const id = msg && typeof msg === 'object' ? msg.id ?? null : null;
+  if (msg?.action === 'update' && opts.update) {        // aggiornamento online dell'estensione (src/update.js): firma verificata prima di scrivere
+    const a = msg.args && typeof msg.args === 'object' ? msg.args : {};
+    try { return { id, ok: true, result: await opts.update({ version: String(a.version || ''), build: String(a.build || '') }) }; }
+    catch (e) { return { id, ok: false, error: e.code || 'internal', message: String(e?.message || e).slice(0, 300) }; }
+  }
   if (msg?.action === 'dossi' && opts.dossi) {          // Dossi dal pannello (esperimento): non è uno strumento MCP
     try { return { id, ok: true, result: await opts.dossi(msg.args && typeof msg.args === 'object' ? msg.args : {}) }; }
     catch (e) {
