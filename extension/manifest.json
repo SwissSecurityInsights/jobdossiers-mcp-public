@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Jobdossiers",
-  "version": "0.2.8",
+  "version": "0.2.9",
   "description": "Salva in Jobdossiers l'annuncio che stai guardando, con un clic. Cifra e invia l'app Jobdossiers su questo computer.",
   "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAzVmdE9zJ3Vp1Fy09YZDJ+AXiS+dvf5uhZFjSwgmgDtn0Msw/9KbTGFt1Y2hydRvdjHHY8WS/bNRAjsEosqUUHQZrqosBmCKQMK79EmD/Du93WJn+AF1/FQcXass/HoVd7CjlAB58RdoQ/Mof7pKnqrNW+IuU4+7l4k9QOMfEPpt7vMZxRFBj9W1S9brafs7tO3TqiZNc1FetQOasozC87Emcqi6UW3rYay0kU27ydFaECYhXmCPDdcBJ0cTcvK1sTuR8ywbv1bEbV06xJTUGL6zolKxIrU+HCcAsh1MsQcsjJ7kpCx8p4E4CgzN9P7btLO/S7z+wX0a74D9q0O9BhwIDAQAB",
   "minimum_chrome_version": "116",

@@ -83,10 +83,6 @@ Ogni release pubblica anche `latest.json` (versione, impronte SHA-256 e dimensio
 
 L'estensione si aggiorna senza reinstallare il pacchetto Jobdossiers. A ogni release `release.yml` pubblica `Jobdossiers-estensione.json.gz` (i file di `extension/` e `build.json`, `scripts/extension-bundle.mjs`) con la firma Ed25519 `.sig`; la chiave privata è solo nel secret `EXTENSION_SIGNING_KEY` del repo pubblico, la pubblica è in `src/update.js`. All'avvio del browser e al massimo una volta al giorno (o con «Controlla aggiornamenti» nel pannello) l'estensione chiede all'app di controllare l'ultima release: l'app scarica il pacchetto, **verifica la firma**, controlla che non sia più vecchio di quello caricato e che sia compatibile con il server installato (`extension/compat.json` ≤ `NATIVE_PROTOCOL`), poi sostituisce in un colpo solo la cartella da cui il browser carica l'estensione (`~/Library/Application Support/Jobdossiers/estensione`, `%LOCALAPPDATA%\Jobdossiers\estensione`), solo se contiene la stessa estensione. L'estensione si ricarica da sola. Firma non valida, pacchetto manomesso o cartella diversa: non cambia nulla. Si disattiva dal pannello («Aggiorna l'estensione automaticamente»).
 
-### Dossi nel pannello (esperimento)
-
-In fondo al pannello, **«Chiedi a Dossi»**: domande all'assistente AI di Jobdossiers sull'annuncio aperto e sulle candidature («È adatto a me?», «Cosa metto in evidenza nella lettera?»…). Il server locale decifra le candidature e costruisce lo stesso blocco dati di `app.php` (`src/dossi.js`, uguale a `public/assets/assistant.js` del portale: lo controlla `test/dossi.test.js`); l'annuncio in visione entra nella prima domanda (al massimo 4.000 caratteri). Usa l'**AI di sistema** del portale (azione `assistant`, Infomaniak): candidature decifrate e domande passano **in chiaro** dal portale, come in `app.php`, quindi il pannello chiede il consenso la prima volta. Stessi limiti mensili di Dossi; la conversazione non viene salvata. Richiede che il portale permetta l'azione `assistant` alla chiave per automazioni.
-
 ### Client configurati dalle app
 
 Le app configurano con un clic solo i client più diffusi:
@@ -110,15 +106,37 @@ Il server funziona con qualunque client MCP via stdio: per gli altri (Cursor, VS
 | `jd_quota` | Uso del piano e numero di schede |
 | `jd_docs` | CV e lettere generati dalla piattaforma (nomi, non contenuti) |
 | `jd_preferences` | Preferenze di lavoro salvate nel Profilo (scheda «Preferenze»): documento `prefs` letto con `doc_list` e `doc_get`, decifrato qui (AAD `jd1:doc`) e ripulito secondo lo schema `Preferences` di `openapi.json` (valori fuori elenco scartati, campi vuoti omessi; `dropped_fields` elenca solo i nomi). Sola lettura: il portale non lascia all'agente sostituirle né cancellarle (`agent_scope`). Se mancano, `saved: false` e un messaggio chiaro |
+| `jd_profile` | Profilo professionale salvato nella pagina Profilo (profilo strutturato del CV): documento `cv_profile` letto con `doc_list` e `doc_get`, decifrato qui (AAD `jd1:doc`), solo le sezioni elencate sotto. Parametro facoltativo `sections`. Uscita `{ ok, saved, profile }`, campi vuoti omessi; oltre circa 15 000 caratteri si accorciano le esperienze più vecchie e compare `truncated: true`. Sola lettura. Se manca, `saved: false` |
 | `jd_upload_doc` | Carica un CV o una lettera (`.pdf` o `.docx`, al massimo 6 MB) da questo computer su una scheda `preparing`, `to_send`, `sent`, `in_review` o in colloquio (`interview`, e i vecchi `hr_interview` e `tech_interview`), solo se per quel tipo non c'è ancora un documento (`doc_exists`, non sostituisce mai); il file si cifra qui. Dopo l'invio lascia una nota `[agente]` con data, tipo e nome del file. Il portale ne accetta al massimo 30 all'ora (finestra mobile di 60 minuti): oltre risponde `rate_limited`, con l'attesa se il portale la indica. Con `JD_UPLOAD_DIR` si limita a una cartella |
 | `jd_agenda` | Appuntamenti liberi dell'agenda, decifrati e ordinati per data; filtri `from`, `to`, `query` |
 | `jd_agenda_save` | Crea un appuntamento (`title`, `at` in ora di Zurigo, `kind`, `place`, `who`, `note`, `app`) o ne cambia solo i campi dati; niente cancellazione |
+
+### Campi di `jd_profile`
+
+Nomi del portale (`public/assets/profile-ui.js`), nell'ordine delle sezioni accettate da `sections`:
+
+| Sezione | Contenuto |
+|---|---|
+| `headline` | Titolo professionale (ruolo cercato) |
+| `summary` | Sintesi professionale |
+| `experience` | `[{ title, employer, location, start, end, bullets }]` dalla più recente; date `MM.AAAA`, `AAAA` o `present`; `bullets` = attività e risultati |
+| `skills` | Competenze e strumenti (un elenco unico nel portale) |
+| `certifications` | Certificazioni, come testo (il portale non salva ente né anno a parte) |
+| `education` | `[{ degree, institution, location, start, end }]` |
+| `languages` | `[{ name, level }]` |
+| `links` | `{ linkedin, website }`, solo indirizzi `http(s)` |
+
+In più `lang`, la lingua del profilo. Il portale non salva gli anni di esperienza né i settori: non ci sono.
+
+Mai esposti: nome, e-mail, telefono, luogo di residenza (`contacts.location`), data di nascita, nazionalità e permesso (`personal`), casi STAR (`star`), origine del profilo (`src`), foto, file di CV e lettere (restano in `jd_docs`, solo nomi). L'elenco è chiuso: un campo che il portale aggiungerà non passa finché non lo si aggiunge qui.
+
+Autorizzazione: la chiave per automazioni legge tutti i documenti dell'account, quindi in locale non c'è una scelta per sezione; se il portale nega la lettura (`agent_scope`), il profilo non c'è e tutte le sezioni chieste finiscono in `omitted`, senza errore. Il server locale decifra al momento, quindi non ha righe `stale`: quelle riguardano le viste del connettore remoto.
 
 ## Regole nel codice
 
 - `sent` e `withdrawn` non sono impostabili dall'agente; non esistono invio né cancellazione definitiva di schede o appuntamenti. Si caricano solo CV e lettera, negli stati di `DOC_UPLOAD_STATUSES` e mai al posto di un documento esistente; negli altri stati `docs_locked`. `deleted` toglie la scheda dalla lista ma resta ripristinabile scegliendo un altro stato.
 - I contatti stanno solo nella Rete: in una scheda `contacts_list` contiene riferimenti `{id, net, role}`; nome e recapiti non si scrivono mai nella scheda. Il server non crea né modifica persone della Rete.
-- Le preferenze di lavoro sono dati personali dell'utente: si leggono soltanto, per le sue ricerche.
+- Le preferenze di lavoro e il profilo sono dati personali dell'utente: si leggono soltanto, per le sue ricerche; il profilo non si scrive su disco né nei log.
 - `jobroom_registered_on` non viene mai inviato; le note non si sovrascrivono; i campi cifrati che l'agente non conosce sono conservati a ogni salvataggio.
 - Conflitto di versione: il client rilegge e riapplica la modifica (3 tentativi). Le schede in sola lettura o non decifrabili non si toccano.
 - Il token viaggia solo verso `jobdossiers.ch` (o localhost per i test), solo su HTTPS, senza seguire redirect.

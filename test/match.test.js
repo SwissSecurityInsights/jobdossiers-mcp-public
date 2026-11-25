@@ -92,3 +92,95 @@ test('confronto: «a freelancer» tra i clienti non è un contratto freelance; l
   const fl = { url: 'https://x.example/j', h1: 'Security Consultant', about: 'This is a freelance position for 6 months.' };
   assert.equal(compare({ contracts: ['permanent'] }, jobFacts(fl, fields(fl)), TODAY)[0].job, 'freelance');
 });
+
+test('confronto: annunci di jobs.ch (città in addressRegion con «/Hybrid», ore settimanali, contratto in tedesco)', () => {
+  const posting = (region, hours, type, title) => ({ url: 'https://www.jobs.ch/de/stellenangebote/detail/00000000-1111-4222-8333-444455556666/',
+    ld: [ld({ title, hiringOrganization: { name: 'Muster Kantonalbank' }, employmentType: type, workHours: hours,
+      jobLocation: { '@type': 'Place', address: { addressRegion: region, postalCode: '8750', addressCountry: 'CH' } }, description: '<p>Sicherheit.</p>' })] });
+  const prefs = { home_cc: 'CH', relocate: 'country', places: ['Glarus'], modes: ['hybrid'], pen_min: 80, pen_max: 100, contracts: ['permanent'] };
+  const a = posting('Glarus/Hybrid', '42 - 42 hours/week', 'Festanstellung', 'Information Security Officer');
+  const fa = fields(a);
+  assert.equal(fa.employer_zip_city, '8750 Glarus'); assert.equal(fa.employer_country, 'CH');
+  const r = Object.fromEntries(compare(prefs, jobFacts(a, fa), TODAY).map(x => [x.id, x]));
+  assert.deepEqual([r.loc.result, r.mode.result, r.pen.job, r.con.job], ['ok', 'ok', '100%', 'tempo indeterminato']);
+  const b = posting('Windisch', '33.6 - 42 hours/week', 'Temporär', 'Security Analyst');
+  const rb = Object.fromEntries(compare(prefs, jobFacts(b, fields(b)), TODAY).map(x => [x.id, x]));
+  assert.deepEqual([rb.loc.job, rb.mode.result, rb.pen.job, rb.con.job, rb.con.result], ['Windisch, CH', 'unknown', '80–100%', 'interinale', 'no']);
+  const c = posting('Biel/Bienne', '', 'Befristet', 'Information Security Officer (ISB) 80 / 100 %');
+  const rc = Object.fromEntries(compare(prefs, jobFacts(c, fields(c)), TODAY).map(x => [x.id, x]));
+  assert.deepEqual([fields(c).employer_zip_city, rc.pen.job, rc.con.job], ['8750 Biel/Bienne', '80–100%', 'tempo determinato'], 'la barra di Biel/Bienne resta, «80 / 100 %» è un intervallo');
+});
+
+test('jobs.ch: «100%» nel riquadro, contratto francese, «/Hybrid» tolto dall\'indirizzo', async () => {
+  const { placeFromAddress } = await import('../extension/parse.js');
+  assert.deepEqual(placeFromAddress('8750 Glarus/Hybrid', 'https://www.jobs.ch/en/'), { zipCity: '8750 Glarus', country: 'CH' });
+  const r = { url: 'https://www.jobs.ch/fr/offres-emplois/detail/00000000-1111-4222-8333-444455556666/', ld: [], title: 'Analyste sécurité', h1: 'Analyste sécurité',
+    site: { title: 'Analyste sécurité', company: 'Belmonte SA', place: '1630 Bulle', info: '20 novembre 2026 100% Durée indéterminée 1630 Bulle' } };
+  const f = jobFacts(r, { role: 'Analyste sécurité', job_desc: 'Nous cherchons une personne.' });
+  assert.deepEqual(f.pensum, { min: 100, max: 100 });
+  assert.deepEqual(f.contracts, ['permanent']);
+});
+
+test('LinkedIn: etichetta «Hybrid» del riquadro prima del testo, «vor Ort» non è «in sede», «80% oder mehr» → 80–100', () => {
+  const desc = 'Wir entwickeln mit unseren Kund:innen Lösungen direkt vor Ort.\nPensum: 80% oder mehr\nDein Arbeitsort ist vor Ort beim Kunden.';
+  const base = { url: 'https://www.linkedin.com/jobs/view/3912345678/', ld: [], top: { title: 'Cloud Security Architect', text: 'Zurich, Switzerland · 1 day ago' } };
+  const f = jobFacts({ ...base, top: { ...base.top, tags: ['Hybrid', 'Full-time'] } }, { role: 'Cloud Security Architect', job_desc: desc });
+  assert.deepEqual(f.modes, ['hybrid']);
+  assert.deepEqual(f.pensum, { min: 80, max: 100 });
+  assert.deepEqual(jobFacts(base, { role: 'Cloud Security Architect', job_desc: desc }).modes, [], 'senza etichette: «vor Ort» non dice la modalità');
+  assert.deepEqual(jobFacts({ ...base, top: { ...base.top, tags: ['On-site'] } }, { role: 'x', job_desc: '' }).modes, ['onsite']);
+});
+
+test('tragitto casa-lavoro: il tempo più breve rispetto al massimo, senza il mezzo nel nome', async () => {
+  const { commuteRow } = await import('../extension/match.js');
+  const p = { commute_max: 60, must: { com: true } };
+  assert.equal(commuteRow({}, { seconds: 100 }), null, 'senza massimo nessuna riga');
+  assert.deepEqual(commuteRow(p, { seconds: 50 * 60 }), { id: 'com', label: 'Tragitto casa-lavoro', must: true, note: 'massimo 60 min', job: '50 min', result: 'ok' });
+  assert.equal(commuteRow(p, { seconds: 99 * 60 }).result, 'no'); assert.equal(commuteRow(p, { seconds: 99 * 60 }).job, '1 h 39 min');
+  assert.equal(commuteRow(p, { ask: true }).result, 'unknown');
+  assert.equal(commuteRow(p, null).job, 'non calcolabile');
+  assert.equal(commuteRow(p, { seconds: 0 }).job, 'non disponibile');
+  assert.ok(!/auto|mezzi/i.test(commuteRow(p, { seconds: 1 }).label));
+});
+
+test('jobs.ch in francese: occupazione «5%» e contratto «Temporaire»', () => {
+  const base = { url: 'https://www.jobs.ch/fr/offres-emplois/detail/00000000-1111-4222-8333-444455556666/', ld: [], title: 'Technicien', h1: 'Technicien' };
+  assert.deepEqual(jobFacts({ ...base, site: { info: '20 novembre 2026 5% Durée indéterminée 1007 Lausanne' } }, { role: 'Technicien', job_desc: '' }).pensum, { min: 5, max: 5 });
+  assert.deepEqual(jobFacts({ ...base, site: { info: '20 novembre 2026 100% Temporaire 1212 Grand-Lancy' } }, { role: 'Technicien', job_desc: '' }).contracts, ['interim']);
+});
+
+test('carriera: livello dell\'annuncio rispetto al ruolo attuale del profilo', async () => {
+  const { careerRow, currentRole } = await import('../extension/match.js');
+  const profile = { headline: 'Security leader', experience: [{ title: 'Security Officer', employer: 'Belmonte SA', end: '03.2018' }, { title: 'Head of IT Security', employer: 'Ginevra Privatbank', end: 'present' }] };
+  assert.deepEqual(currentRole(profile), { title: 'Head of IT Security', employer: 'Ginevra Privatbank' });
+  assert.equal(careerRow(profile, { level: 'exec' }).job, 'miglioramento');
+  assert.equal(careerRow(profile, { level: 'exec' }).result, 'ok');
+  assert.equal(careerRow(profile, { level: 'head' }).result, 'same');
+  assert.equal(careerRow(profile, { level: 'ic' }).job, 'peggioramento');
+  assert.match(careerRow(profile, { level: 'ic' }).note, /da head \/ direttore a specialista/);
+  assert.equal(careerRow(profile, { level: '' }).result, 'unknown');
+  assert.equal(careerRow(null, { level: 'exec' }), null);
+  assert.deepEqual(currentRole({ headline: 'CISO', experience: [] }), { title: 'CISO', employer: '' });
+});
+
+test('competenze e lingue: annuncio rispetto al profilo, senza falsi allarmi comuni', async () => {
+  const { skillsRow, languagesRow, levelIndex } = await import('../extension/match.js');
+  const p = { skills: ['ISO 27001', 'Risk management', 'Python'], certifications: ['CISSP'], languages: [{ name: 'Italiano', level: 'Madrelingua' }, { name: 'Inglese', level: 'C1' }, { name: 'Tedesco', level: 'B2' }] };
+  const text = 'We require CISSP or CISM, ISO 27001 and AWS. Sehr gute Deutschkenntnisse (C1) und fliessend Englisch. Standort Deutschschweiz. Go-live planning, lean processes, excel at communication.';
+  const s = skillsRow(p, { text });
+  assert.equal(s.result, 'part'); assert.match(s.note, /trovate: ISO 27001, CISSP/); assert.match(s.note, /non nel profilo: CISM, AWS$/);
+  const l = languagesRow(p, { text });
+  assert.equal(l.result, 'no'); assert.match(l.note, /tedesco C1: tu B2/); assert.match(l.note, /inglese C1 ✓/);
+  assert.equal(languagesRow(p, { text: 'Standort Deutschschweiz, Deutsche Bahn in der Nähe.' }).job, 'non indicate');
+  assert.equal(levelIndex('verhandlungssicher'), 4); assert.equal(levelIndex('Madrelingua'), 5); assert.equal(levelIndex('B2'), 3);
+  assert.equal(skillsRow({ skills: [] }, { text }), null); assert.equal(languagesRow({ languages: [] }, { text }), null);
+});
+
+test('lingue: il livello vale per la lingua vicina, non per quella accanto', async () => {
+  const { requiredLanguages } = await import('../extension/match.js');
+  const lv = t => Object.fromEntries(requiredLanguages(t).map(x => [x.code, x.level]));
+  assert.deepEqual(lv('Sehr gute Deutschkenntnisse (C1), gute Englischkenntnisse.'), { de: 4, en: 3 });
+  assert.deepEqual(lv('Fluent English and basic German.'), { de: 1, en: 4 });
+  assert.deepEqual(lv('Ottima conoscenza dell\'inglese (C1) e tedesco B2.'), { de: 3, en: 4 });
+  assert.deepEqual(lv('Anglais courant, allemand un atout.'), { de: -1, en: 4 });
+});

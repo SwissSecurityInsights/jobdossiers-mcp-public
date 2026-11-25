@@ -34,7 +34,7 @@ export async function startMock(fx, seeds = SEEDS()) {
       if (req.headers['x-jd-agent'] !== fx.token) return send(401, { ok: false, error: 'unauthorized' });
       if (action === 'agent_keys') return send(200, { ok: true, wrapped_dek: fx.wrapped });
       if (action === 'app_list') return send(200, { ok: true, rows, quota: { used: 3, cap: 100 }, editable: null, csrf: '' });
-      if (action === 'doc_list') return send(200, { ok: true, docs: state.docs });
+      if (action === 'doc_list') return state.docsDenied ? send(403, { ok: false, error: 'agent_scope' }) : send(200, { ok: true, docs: state.docs });
       if (action === 'doc_upload') {
         if (req.headers['content-type'] !== 'application/octet-stream') return send(415, { ok: false, error: 'bad_request' });
         const kind = req.headers['x-doc-kind'], app = req.headers['x-doc-app'];
@@ -57,6 +57,12 @@ export async function startMock(fx, seeds = SEEDS()) {
         return res.end(Buffer.from(f));
       }
       if (action === 'net_list') return state.netDenied ? send(403, { ok: false, error: 'agent_scope' }) : send(200, { ok: true, items: state.net });
+      if (action === 'net_save') {           // solo creazione (l'app non modifica persone esistenti)
+        const b = JSON.parse(body);
+        if (b.id) return send(400, { ok: false, error: 'not_expected' });
+        const it = { id: 'n' + (100 + state.net.length), enc: b.enc, version: 1 }; state.net.push(it);
+        return send(200, { ok: true, id: it.id, version: 1 });
+      }
       if (action === 'assistant') {          // Dossi con l'AI di sistema (Assistant::chat): qui risponde con quello che ha ricevuto
         const b = JSON.parse(body); state.assistant.push(b);
         if (b.consent !== true) return send(400, { ok: false, error: 'err.asst_consent' });

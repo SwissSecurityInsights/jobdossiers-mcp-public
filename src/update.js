@@ -16,7 +16,7 @@ export const UPDATE_PUBLIC_KEY = `-----BEGIN PUBLIC KEY-----
 MCowBQYDK2VwAyEA8ureIqjJv8Ws8cX9dOHuw29CEbUm5yn1jgFHktxOv3E=
 -----END PUBLIC KEY-----`;
 /** Versione del protocollo con l'estensione (azioni del native messaging). Un'estensione che chiede di più aspetta un pacchetto completo nuovo. */
-export const NATIVE_PROTOCOL = 2;
+export const NATIVE_PROTOCOL = 7;          // 3: contacts; 4: profile; 5: network; 6: reminder; 7 (25.11.2026): history
 const MAX_BUNDLE = 5 * 1024 * 1024, MAX_UNPACKED = 20 * 1024 * 1024, MAX_FILES = 200;
 const PATH = /^(?:[A-Za-z0-9_-]+\/){0,3}[A-Za-z0-9_.-]+\.(?:js|json|html|css|png|svg)$/;
 

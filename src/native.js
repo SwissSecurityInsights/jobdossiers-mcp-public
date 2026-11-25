@@ -1,10 +1,13 @@
 /* Native messaging di Chrome ed Edge: l'estensione «Jobdossiers» (extension/) parla con questo eseguibile, che cifra e salva come per i client MCP.
  * Il browser avvia l'eseguibile indicato nel manifest dell'host passando come argomento l'origine dell'estensione (chrome-extension://<id>/);
  * i messaggi sono JSON UTF-8 preceduti dalla lunghezza (uint32 little endian) su stdin e stdout.
- * Solo quattro azioni, nessun'altra: status, find_duplicates, create e preferences (sola lettura, per il confronto con l'annuncio nel pannello),
+ * Solo queste azioni, nessun'altra: status, find_duplicates, create, preferences e profile (sola lettura, per il confronto con l'annuncio nel pannello),
  * più hello: l'estensione dice in quale browser e con quale versione è caricata (un file per browser, letto dalle app),
- * dossi: domande a Dossi, l'assistente AI di Jobdossiers (esperimento; solo con consenso, vedi src/dossi.js),
- * e update: aggiornamento online dell'estensione da un pacchetto firmato (vedi src/update.js). La chiave resta nel Portachiavi o in DPAPI: l'estensione non la vede mai. */
+ * update: aggiornamento online dell'estensione da un pacchetto firmato (vedi src/update.js),
+ * contacts: le persone del riquadro «Meet the hiring team» nella Rete, collegate alla scheda (Dossier.addContacts),
+ * network: le persone della Rete nell'impresa dell'annuncio (Dossier.networkAt; solo nome, tipo e ruolo),
+ * reminder: un promemoria nuovo in agenda (Dossier.saveAgenda senza id: crea, non modifica),
+ * e history: le candidature già presenti nella stessa impresa (Dossier.companyHistory; ruolo, stato e date). La chiave resta nel Portachiavi o in DPAPI: l'estensione non la vede mai. */
 import { homedir } from 'node:os';
 import { join, dirname, basename } from 'node:path';
 import { mkdir, writeFile, rm, access } from 'node:fs/promises';
@@ -16,7 +19,7 @@ export const HOST_NAME = 'ch.jobdossiers.mcp';
 export const EXTENSION_IDS = ['glgadembfbimaofodjfmhcnjkfffinne'];
 export const ALLOWED_ORIGINS = EXTENSION_IDS.map(id => `chrome-extension://${id}/`);
 /** Azione dell'estensione → strumento MCP che la esegue (stesse regole e controlli). */
-export const ACTIONS = Object.freeze({ status: 'jd_quota', find_duplicates: 'jd_find_duplicates', create: 'jd_create', preferences: 'jd_preferences' });
+export const ACTIONS = Object.freeze({ status: 'jd_quota', find_duplicates: 'jd_find_duplicates', create: 'jd_create', preferences: 'jd_preferences', profile: 'jd_profile' });
 const MAX_IN = 1024 * 1024;          // l'estensione manda al massimo una pagina di testo
 const MAX_OUT = 1024 * 1024;         // limite di Chrome per i messaggi dall'host
 
@@ -74,12 +77,26 @@ export async function handleMessage(msg, tools, opts = {}) {
     try { return { id, ok: true, result: await opts.update({ version: String(a.version || ''), build: String(a.build || '') }) }; }
     catch (e) { return { id, ok: false, error: e.code || 'internal', message: String(e?.message || e).slice(0, 300) }; }
   }
-  if (msg?.action === 'dossi' && opts.dossi) {          // Dossi dal pannello (esperimento): non è uno strumento MCP
-    try { return { id, ok: true, result: await opts.dossi(msg.args && typeof msg.args === 'object' ? msg.args : {}) }; }
-    catch (e) {
-      return e instanceof ApiError ? { id, ok: false, error: e.code, message: e.message, ...(e.retryAfter !== undefined && { retry_after_seconds: e.retryAfter }) }
-        : { id, ok: false, error: 'internal', message: String(e?.message || e).slice(0, 300) };
-    }
+  if (msg?.action === 'contacts' && opts.contacts) {    // contatti dell'annuncio (LinkedIn) → Rete e scheda: solo su richiesta dal pannello
+    const a = msg.args && typeof msg.args === 'object' ? msg.args : {};
+    try { return { id, ok: true, result: await opts.contacts(String(a.app_id || '').slice(0, 100), a.people) }; }
+    catch (e) { return { id, ok: false, error: e.code || 'internal', message: String(e?.message || e).slice(0, 300) }; }
+  }
+  if (msg?.action === 'network' && opts.network) {     // persone della Rete nell'impresa dell'annuncio (solo nome, tipo, ruolo)
+    const a = msg.args && typeof msg.args === 'object' ? msg.args : {};
+    try { return { id, ok: true, result: await opts.network(String(a.company || '').slice(0, 200)) }; }
+    catch (e) { return { id, ok: false, error: e.code || 'internal', message: String(e?.message || e).slice(0, 300) }; }
+  }
+  if (msg?.action === 'history' && opts.history) {     // candidature già presenti nella stessa impresa (ruolo, stato, date)
+    const a = msg.args && typeof msg.args === 'object' ? msg.args : {};
+    try { return { id, ok: true, result: await opts.history(String(a.company || '').slice(0, 200)) }; }
+    catch (e) { return { id, ok: false, error: e.code || 'internal', message: String(e?.message || e).slice(0, 300) }; }
+  }
+  if (msg?.action === 'reminder' && opts.reminder) {   // promemoria dall'annuncio: crea soltanto un appuntamento in agenda, mai modifiche
+    const a = msg.args && typeof msg.args === 'object' ? msg.args : {};
+    const input = { title: String(a.title || '').slice(0, 200), at: String(a.at || ''), kind: 'other', note: String(a.note || '').slice(0, 1000), ...(a.app ? { app: String(a.app).slice(0, 100) } : {}) };
+    try { return { id, ok: true, result: await opts.reminder(input) }; }
+    catch (e) { return { id, ok: false, error: e.code || 'internal', message: String(e?.message || e).slice(0, 300) }; }
   }
   if (msg?.action === 'hello') {          // «sono caricata in questo browser, con questa versione» (background.js)
     try { return { id, ok: true, result: await hello(msg.args && typeof msg.args === 'object' ? msg.args : {}, opts) }; }

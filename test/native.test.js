@@ -25,7 +25,7 @@ test('native: messaggi a lunghezza prefissata, anche spezzati in più pezzi', ()
   assert.deepEqual(errs, ['too_large']);
   assert.equal(nativeOrigin(['node', 'x', ORIGIN, '--parent-window=0']), ORIGIN);
   assert.equal(nativeOrigin(['node', 'x', 'chrome-extension://evil/']), undefined);
-  assert.deepEqual(Object.keys(ACTIONS), ['status', 'find_duplicates', 'create', 'preferences']);
+  assert.deepEqual(Object.keys(ACTIONS), ['status', 'find_duplicates', 'create', 'preferences', 'profile']);
 });
 
 test('native: un\'estensione con un altro ID riceve solo un errore', async () => {
@@ -164,4 +164,22 @@ test('registrazione su Windows: manifest accanto all\'eseguibile e chiavi HKCU p
   } finally { await rm(dir, { recursive: true }); }
   assert.throws(() => hostPath(undefined, '/usr/local/bin/node'), e => e.code === 'invalid_value');
   assert.equal(hostPath(undefined, '/x/jobdossiers-mcp'), '/x/jobdossiers-mcp');
+});
+
+test('native: contatti dell\'annuncio solo con il gestore dell\'app; errori chiari', async () => {
+  const calls = [];
+  const opts = { contacts: async (id, people) => { calls.push([id, people]); if (id === 'r9') throw Object.assign(new Error('Scheda non trovata'), { code: 'not_found' }); return { created: 1, linked: 1, already: [] }; } };
+  const ok = await handleMessage({ id: 1, action: 'contacts', args: { app_id: 'r1', people: [{ name: 'Anna Muster' }] } }, [], opts);
+  assert.deepEqual(ok, { id: 1, ok: true, result: { created: 1, linked: 1, already: [] } });
+  assert.deepEqual(calls[0], ['r1', [{ name: 'Anna Muster' }]]);
+  assert.deepEqual(await handleMessage({ id: 2, action: 'contacts', args: { app_id: 'r9', people: [] } }, [], opts), { id: 2, ok: false, error: 'not_found', message: 'Scheda non trovata' });
+  assert.equal((await handleMessage({ id: 3, action: 'contacts', args: {} }, [], {})).error, 'unknown_action', 'senza gestore: azione non ammessa');
+});
+
+test('native: promemoria solo nuovi (l\'id passato dall\'estensione non arriva all\'agenda)', async () => {
+  const got = [];
+  const opts = { reminder: async input => { got.push(input); return { id: 'a1', version: 1 }; } };
+  const r = await handleMessage({ id: 1, action: 'reminder', args: { id: 'a9', title: 'Scadenza candidatura', at: '2026-12-13T09:00', app: 'r1', kind: 'call', note: 'x' } }, [], opts);
+  assert.deepEqual(r, { id: 1, ok: true, result: { id: 'a1', version: 1 } });
+  assert.deepEqual(got[0], { title: 'Scadenza candidatura', at: '2026-12-13T09:00', kind: 'other', note: 'x', app: 'r1' });
 });

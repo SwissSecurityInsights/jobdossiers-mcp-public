@@ -7,7 +7,7 @@ export const RELOCATE = ['no', 'country', 'any'];
 export const MODES = ['onsite', 'hybrid', 'remote'];
 export const CONTRACTS = ['permanent', 'fixed', 'freelance', 'interim', 'internship'];
 export const LEVELS = ['ic', 'lead', 'head', 'exec'];
-export const MUST = ['loc', 'mode', 'sal', 'pen', 'con', 'lvl', 'trv', 'spo', 'sta', 'sec'];
+export const MUST = ['loc', 'com', 'mode', 'sal', 'pen', 'con', 'lvl', 'trv', 'spo', 'sta', 'sec'];
 
 const CC = /^[A-Z]{2}$/;
 const TEXT_MAX = 100;
@@ -30,6 +30,7 @@ export function cleanPrefs(raw) {
     home_city: text(r.home_city),
     home_cc: match(r.home_cc, CC),
     relocate: oneOf(r.relocate, RELOCATE),
+    commute_max: int(r.commute_max, 5, 240),          // minuti di tragitto casa-lavoro (portale, 25.11.2026)
     places: list(r.places, x => text(x), 30),
     countries: list(r.countries, x => match(x, CC)),
     modes: list(r.modes, x => oneOf(x, MODES)),
