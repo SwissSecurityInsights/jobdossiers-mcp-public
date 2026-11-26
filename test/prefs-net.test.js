@@ -35,6 +35,8 @@ test('preferenze: ripulite secondo lo schema, campi vuoti omessi, scartati solo 
   assert.deepEqual(dropped.sort(), ['extra', 'home_cc', 'must.sal', 'must.xyz', 'pen_max', 'relocate', 'remote_min', 'sal_cur', 'sal_min', 'start', 'travel_max'].sort());
   assert.ok(!JSON.stringify(dropped).includes('segreto'), 'solo nomi, mai valori');
   assert.deepEqual(cleanPrefs(null), { prefs: {}, dropped: [] });
+  assert.deepEqual(cleanPrefs({ commute_max: 45, must: { com: true } }).prefs, { commute_max: 45, must: { com: true } });
+  assert.deepEqual(cleanPrefs({ commute_max: 1000 }).dropped, ['commute_max']);
   assert.deepEqual(cleanPrefs({ places: Array.from({ length: 40 }, (_, i) => 'L' + i) }).prefs.places.length, 30);
 });
 
@@ -141,5 +143,74 @@ test('contatti in scrittura: solo riferimenti {id, net, role}, mai nome e recapi
     await d.updateFields('r1', { fields: { contacts_list: [{ id: 'c1', net: 'n1', role: 'recruiter' }] } });
     const row = mock.rows.find(r => r.id === 'r1');
     assert.deepEqual((await decObj(fx.dek, row.enc, AAD.app)).contacts_list, [{ id: 'c1', net: 'n1', role: 'recruiter' }]);
+  } finally { await mock.close(); }
+});
+
+test('contatti dall\'annuncio: nuove persone nella Rete (formato del portale), già presenti riusate, scheda con soli riferimenti', async () => {
+  const fx = await makeFixture();
+  const mock = await startMock(fx, [{ d: { company: 'Muster AG', role: 'Cloud Security Architect', contacts_list: [{ id: 'c1', net: 'n1', role: 'recruiter' }] } }]);
+  try {
+    mock.net.push({ id: 'n1', version: 1, enc: await encObj(fx.dek, { v: 1, name: 'Luca Esempio', kind: 'recruiter', org: 'Muster AG', role: 'Partner', email: '', phone: '', link: '', note: '', log: [] }, AAD.net) });
+    mock.net.push({ id: 'n2', version: 1, enc: await encObj(fx.dek, { v: 1, name: 'Giulia Prova', kind: 'insider', org: 'Belmonte SA', role: '', email: '', phone: '', link: 'https://www.linkedin.com/in/giulia-prova/', note: '', log: [] }, AAD.net) });
+    const d = mkDossier(fx, mock);
+    const r = await d.addContacts('r1', [
+      { name: 'Anna Muster', role: 'Associate Partner, People | Talent Acquisition', link: 'https://www.linkedin.com/in/anna-muster-123/', poster: true },
+      { name: 'Luca Esempio', role: 'Head of Security', link: 'https://www.linkedin.com/in/luca-esempio/' },      // stesso nome e società: già nella Rete
+      { name: 'Giulia Prova', role: 'CISO', link: 'https://ch.linkedin.com/in/giulia-prova' },                    // stesso profilo
+      { name: '', role: 'x' }, { name: 'Malevolo', link: 'javascript:alert(1)' },
+    ]);
+    assert.equal(r.created, 2, 'Anna e «Malevolo» (senza link): le altre due ci sono già');
+    assert.deepEqual(r.already, ['Luca Esempio']);
+    assert.equal(r.linked, 3);
+    const anna = await decObj(fx.dek, mock.net[2].enc, AAD.net);
+    assert.deepEqual({ ...anna, note: '' }, { v: 1, name: 'Anna Muster', kind: 'recruiter', org: 'Muster AG', role: 'Associate Partner, People | Talent Acquisition', email: '', phone: '', link: 'https://www.linkedin.com/in/anna-muster-123/', note: '', log: [] });
+    assert.equal((await decObj(fx.dek, mock.net[3].enc, AAD.net)).link, '', 'link non LinkedIn scartato');
+    const app = await decObj(fx.dek, mock.rows[0].enc, AAD.app);
+    assert.deepEqual(app.contacts_list.map(c => [c.net, c.role]), [['n1', 'recruiter'], ['n102', 'Job poster'], ['n2', 'Hiring team'], ['n103', 'Hiring team']]);
+    assert.ok(app.contacts_list.every(c => Object.keys(c).every(k => ['id', 'net', 'role'].includes(k))), 'nella scheda solo riferimenti');
+    // di nuovo: niente doppioni né nella Rete né nella scheda
+    const again = await d.addContacts('r1', [{ name: 'Anna Muster', link: 'https://www.linkedin.com/in/anna-muster-123/' }]);
+    assert.deepEqual(again, { created: 0, linked: 0, already: ['Anna Muster'], day: '2026-11-20' });
+    assert.equal(mock.net.length, 4);
+    // interoperabilità: il portale legge la persona così com'è
+    try {
+      const { createRequire } = await import('node:module');
+      const JDNet = createRequire(import.meta.url)('../../jobdossiers.ch/public/assets/network.js');
+      assert.deepEqual(JDNet.normalize(anna), anna);
+    } catch (e) { if (e.code !== 'MODULE_NOT_FOUND') throw e; }
+    await assert.rejects(d.addContacts('r1', [{ name: '' }]), /Nessun contatto valido/);
+    await assert.rejects(d.addContacts('r9', [{ name: 'X' }]), /non trovata/);
+  } finally { await mock.close(); }
+});
+
+test('Rete nell\'impresa dell\'annuncio: stessa impresa scritta in modi diversi, solo nome, tipo e ruolo', async () => {
+  const fx = await makeFixture(), mock = await startMock(fx, []);
+  try {
+    const add = async (id, p) => mock.net.push({ id, version: 1, enc: await encObj(fx.dek, { v: 1, email: 'x@example.org', phone: '+41 00', note: 'nota privata', log: [], link: '', ...p }, AAD.net) });
+    await add('n1', { name: 'Luca Esempio', kind: 'colleague', org: 'Swiss Life Group AG', role: 'Head of IT' });
+    await add('n2', { name: 'Anna Muster', kind: 'recruiter', org: 'Muster Executive Search', role: 'Partner' });
+    await add('n3', { name: 'Giulia Prova', kind: 'insider', org: 'Swiss Life', role: '' });
+    const d = mkDossier(fx, mock);
+    const r = await d.networkAt('Swiss Life Schweiz');
+    assert.deepEqual(r.people.map(p => p.name).sort(), ['Giulia Prova', 'Luca Esempio']);
+    assert.ok(!JSON.stringify(r).includes('example.org') && !JSON.stringify(r).includes('nota privata'), 'niente recapiti né note');
+    assert.deepEqual((await d.networkAt('AG')).people, [], 'nome troppo generico');
+    assert.ok(mock.requests.every(x => !WRITES.includes(x.action)), 'nessuna scrittura');
+  } finally { await mock.close(); }
+});
+
+test('candidature nella stessa impresa: ruolo, stato e date, senza testi; eliminate escluse', async () => {
+  const fx = await makeFixture();
+  const mock = await startMock(fx, [
+    { d: { company: 'Swiss Life AG', role: 'Head of IT Security', notes: 'nota privata', job_desc: 'testo' }, status: 'rejected', status_changed_on: '2026-03-10' },
+    { d: { company: 'Swiss Life Group', role: 'CISO' }, status: 'deleted' },
+    { d: { company: 'Belmonte SA', role: 'CISO' }, status: 'sent' },
+    { d: { company: 'Swiss Life Schweiz', role: 'Security Architect' }, status: 'interview', status_changed_on: '2026-11-01' },
+  ]);
+  try {
+    const r = await mkDossier(fx, mock).companyHistory('Swiss Life');
+    assert.deepEqual(r.applications.map(a => [a.role, a.status]), [['Security Architect', 'interview'], ['Head of IT Security', 'rejected']]);
+    assert.ok(!JSON.stringify(r).includes('nota privata') && !JSON.stringify(r).includes('testo'));
+    assert.ok(mock.requests.every(x => !WRITES.includes(x.action)), 'nessuna scrittura');
   } finally { await mock.close(); }
 });

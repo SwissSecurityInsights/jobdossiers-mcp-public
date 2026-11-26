@@ -13,6 +13,11 @@
     <button id="reread" type="button" class="link">Rileggi la pagina</button>
   </header>
   <p id="msg" class="msg" hidden></p>
+  <div id="remind" class="remind" hidden>
+    <span class="small">Promemoria in agenda:</span>
+    <button id="remind-7" type="button" class="link">ricontrolla tra 7 giorni</button>
+    <button id="remind-dl" type="button" class="link" hidden>2 giorni prima della scadenza</button>
+  </div>
   <p id="notjob" hidden><button id="use-anyway" type="button" class="link">Usa comunque questa pagina</button></p>
   <p id="auto-hint" hidden><button id="auto-hint-btn" type="button" class="link">Attiva la lettura automatica</button>: il pannello verificherà ogni pagina che apri, a ogni caricamento.</p>
   <form id="f" hidden>
@@ -23,33 +28,41 @@
       <label class="cc">Paese <input name="employer_country" maxlength="2" placeholder="CH"></label>
     </div>
     <label>Indirizzo dell'annuncio <input name="job_url" required type="url" maxlength="2000"></label>
+    <p id="dates" class="muted small" hidden></p>
     <section id="match" class="match" hidden>
       <strong>Rispetto alle tue preferenze</strong>
       <table><tbody id="match-rows"></tbody></table>
-      <p class="muted small">✓ corrisponde · ✗ non corrisponde · ? l'annuncio non lo dice. Confronto fatto qui, sul tuo computer.</p>
+      <div id="trip" class="trip muted small" hidden>
+        <span id="trip-on">Tempi di percorrenza da OpenStreetMap<span id="trip-pt"> e transport.opendata.ch</span>: ricevono solo la tua località e quella dell'annuncio. <button id="trip-stop" type="button" class="link">Disattiva</button></span>
+        <span id="trip-off">Tempi di percorrenza disattivati. <button id="trip-start" type="button" class="link">Attiva</button></span>
+      </div>
+      <p class="muted small">✓ corrisponde · ✗ non corrisponde · ≈ in parte · = stesso livello · ? l'annuncio non lo dice. Confronto fatto qui, sul tuo computer.</p>
     </section>
     <p id="noprefs" class="muted small" hidden>Per confrontare l'annuncio con le tue preferenze impostale in Jobdossiers, Profilo → «Preferenze».</p>
     <label>Testo dell'annuncio <span id="src" class="muted"></span>
       <textarea name="job_desc" rows="12"></textarea></label>
+    <section id="history" class="match" hidden>
+      <strong>Le tue candidature in questa impresa</strong>
+      <ul id="history-list" class="small"></ul>
+    </section>
+    <section id="netco" class="match" hidden>
+      <strong>Nella tua Rete, in questa impresa</strong>
+      <ul id="netco-list" class="small"></ul>
+    </section>
+    <section id="people" class="match" hidden>
+      <strong>Contatti nell'annuncio</strong>
+      <div id="people-list"></div>
+      <p class="muted small">Quelli spuntati vanno nella tua Rete (cifrati, senza doppioni) e vengono collegati alla candidatura quando la salvi.</p>
+    </section>
     <div id="dups" class="dups" hidden></div>
     <button id="save" type="submit">Salva in Jobdossiers</button>
   </form>
-  <section id="dossi" class="dossi" hidden>
-    <strong>Chiedi a Dossi</strong> <span class="muted small">esperimento</span>
-    <div id="dossi-consent" hidden>
-      <p class="small">Dossi usa l'AI di sistema di Jobdossiers: le tue candidature decifrate, l'annuncio che stai guardando e le domande passano <strong>in chiaro</strong> dal portale a Infomaniak (Svizzera), come in Jobdossiers. Non vengono salvate.</p>
-      <button id="dossi-ok" type="button">Accetto, usa Dossi</button>
-    </div>
-    <div id="dossi-chat" hidden>
-      <div id="dossi-quick" class="quick">
-        <button type="button" class="chip">È adatto a me?</button>
-        <button type="button" class="chip">Cosa metto in evidenza nella lettera?</button>
-        <button type="button" class="chip">Assomiglia a candidature che ho già fatto?</button>
-      </div>
-      <div id="dossi-log" class="log"></div>
-      <textarea id="dossi-q" rows="3" maxlength="3000" placeholder="Scrivi a Dossi…"></textarea>
-      <div class="row2"><span id="dossi-usage" class="muted small"></span><button id="dossi-new" type="button" class="link">Nuova conversazione</button><button id="dossi-send" type="button">Invia</button></div>
-    </div>
+  <section id="search" class="box" hidden>
+    <strong>Cerca annunci</strong> <span class="muted small">con le tue preferenze</span>
+    <label class="small">Parole chiave <input id="s-kw" maxlength="200"></label>
+    <div class="row"><label class="small">Luogo <input id="s-loc" maxlength="100"></label><label class="small cc">Paese <input id="s-cc" maxlength="2"></label></div>
+    <label class="inline small"><input id="s-recent" type="checkbox">ultimi 7 giorni</label>
+    <div id="s-links" class="row2"></div>
   </section>
   <footer>
     <button id="auto" type="button" class="link">Leggi automaticamente ogni pagina</button> ·

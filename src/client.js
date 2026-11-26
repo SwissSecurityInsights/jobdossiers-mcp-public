@@ -2,11 +2,11 @@
 import { realpath, stat, readFile } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { basename, extname, isAbsolute, join, sep } from 'node:path';
+import { PROFILE_KIND, SECTIONS, cleanProfile } from './profile.js';
 import { AAD, openDek, encObj, decObj, encBytes, decBytes } from './crypto.js';
 import { ApiError } from './api.js';
 import { findDuplicates, noteLog } from './dedupe.js';
 import { PREFS_KIND, cleanPrefs } from './prefs.js';
-import { record, buildContext, contextBlock, trimHistory, withPosting, MAX_CTX_SYS } from './dossi.js';
 
 /** Ordine di openapi.json (Status). 'preparing': analisi in corso, il portale la porta a 'to_send'. 'deleted': tolta dalla lista, ripristinabile.
  *  'interview' dal 28.10.2026 sostituisce hr_interview e tech_interview. */
@@ -136,6 +136,100 @@ export class Dossier {
     return people;
   }
 
+  /**
+   * Contatti visti nell'annuncio (LinkedIn, «Meet the hiring team») → persone della Rete e riferimenti nella scheda.
+   * Una persona già nella Rete (stesso profilo, oppure stesso nome e stessa società) non si duplica. La scheda riceve solo {id, net, role}.
+   * people: [{name, role, link, poster}], tutto testo della pagina: si accetta solo il necessario e solo link a profili LinkedIn.
+   */
+  async addContacts(appId, people, now = this.now()) {
+    const list = Dossier.cleanPeople(people);
+    if (!list.length) throw invalid('Nessun contatto valido (servono nome e, se c\'è, un link a un profilo LinkedIn)');
+    const { items } = await this.load(true);
+    const app = items.find(x => x.row.id === appId);
+    if (!app) throw new ApiError('not_found', { message: 'Scheda non trovata' });
+    if (app.bad) throw new ApiError('unreadable', { message: 'Scheda non decifrabile: non la modifico' });
+    const company = String(app.d.company || '').slice(0, 120);
+    const k = await this.dek();
+    const net = [];
+    for (const it of (await this.api.call('net_list')).items || []) { try { net.push({ rid: it.id, p: await decObj(k, it.enc, AAD.net) }); } catch { /* voce non leggibile: non si tocca */ } }
+    const fold = v => String(v || '').normalize('NFD').replace(/\p{M}/gu, '').replace(/\s+/g, ' ').trim().toLowerCase();
+    const slug = v => (String(v || '').match(/linkedin\.com\/in\/([^/?#]+)/i)?.[1] || '').toLowerCase();
+    const day = now.toISOString().slice(0, 10);
+    const refs = []; let created = 0;
+    for (const c of list) {
+      let hit = net.find(r => r.p && c.link && slug(r.p.link) && slug(r.p.link) === slug(c.link))
+        || net.find(r => r.p && fold(r.p.name) === fold(c.name) && (!fold(r.p.org) || !company || fold(r.p.org) === fold(company)));
+      if (!hit) {
+        const p = { v: 1, name: c.name, kind: /talent|recruit|\bhr\b|human resources|people|personal|acquisition|hiring|selezione|risorse umane/i.test(c.role) ? 'recruiter' : 'insider',
+          org: company, role: c.role, email: '', phone: '', link: c.link, note: `Dall'annuncio «${String(app.d.role || '').slice(0, 100)}» (${company}), estensione Jobdossiers.`.slice(0, 2000),
+          log: [] };
+        const j = await this.api.call('net_save', { enc: await encObj(k, p, AAD.net) });
+        hit = { rid: j.id, p }; net.push(hit); created++;
+      }
+      refs.push({ net: hit.rid, role: c.poster ? 'Job poster' : 'Hiring team', name: c.name });
+    }
+    let linked = 0; const already = [];
+    await this.update(appId, d => {
+      const cur = Array.isArray(d.contacts_list) ? d.contacts_list.filter(x => x && typeof x === 'object') : [];
+      linked = 0; already.length = 0;
+      for (const r of refs) {
+        if (cur.some(x => x.net === r.net)) { already.push(r.name); continue; }
+        cur.push({ id: newId(), net: r.net, role: r.role }); linked++;
+      }
+      d.contacts_list = cur;
+    });
+    return { created, linked, already, day };
+  }
+
+  /** Persone della Rete che lavorano nell'impresa dell'annuncio (per il pannello dell'estensione): solo nome, tipo e ruolo, mai recapiti né note. */
+  async networkAt(company) {
+    const want = Dossier.companyCore(company);
+    if (want.length < 3) return { people: [] };
+    const out = [];
+    for (const [, p] of await this.network()) {
+      if (!p || typeof p.name !== 'string' || !p.name) continue;
+      const org = Dossier.companyCore(p.org);
+      if (org.length >= 3 && (org === want || ` ${org} `.includes(` ${want} `) || ` ${want} `.includes(` ${org} `))) out.push({ name: p.name.slice(0, 120), kind: String(p.kind || ''), role: String(p.role || '').slice(0, 120) });
+      if (out.length >= 10) break;
+    }
+    return { people: out };
+  }
+
+  /** Candidature già presenti nella stessa impresa (pannello dell'estensione): ruolo, stato e date, mai note, contatti né testo. */
+  async companyHistory(company) {
+    const want = Dossier.companyCore(company);
+    if (want.length < 3) return { applications: [] };
+    const { items } = await this.load();
+    const out = [];
+    for (const { row, d, bad } of items) {
+      if (bad || normStatus(row.status) === 'deleted') continue;
+      const org = Dossier.companyCore(d.company);
+      if (org.length < 3 || !(org === want || ` ${org} `.includes(` ${want} `) || ` ${want} `.includes(` ${org} `))) continue;
+      out.push({ id: row.id, role: String(d.role || '').slice(0, 150), status: normStatus(row.status), applied_on: row.applied_on || '', changed_on: row.status_changed_on || '' });
+    }
+    out.sort((a, b) => String(b.changed_on || b.applied_on).localeCompare(String(a.changed_on || a.applied_on)));
+    return { applications: out.slice(0, 10) };
+  }
+
+  /** «Swiss Life Group AG» → «swiss life»: senza forma giuridica, gruppo e paese, per riconoscere la stessa impresa scritta in modi diversi. */
+  static companyCore(s) {
+    return String(s || '').normalize('NFD').replace(/\p{M}/gu, '').toLowerCase().replace(/[^a-z0-9& ]+/g, ' ')
+      .replace(/\b(ag|sa|gmbh|ltd|limited|inc|llc|plc|sarl|sagl|spa|srl|bv|nv|se|kg|co|corp|corporation|company|group|gruppe|groupe|gruppo|holding|schweiz|switzerland|suisse|svizzera|swiss branch|international)\b/g, ' ')
+      .replace(/\s+/g, ' ').trim();
+  }
+
+  static cleanPeople(people) {
+    const line = (v, max) => (typeof v === 'string' ? v.replace(/\s+/g, ' ').trim().slice(0, max) : '');
+    const out = [];
+    for (const c of Array.isArray(people) ? people.slice(0, 10) : []) {
+      if (!c || typeof c !== 'object') continue;
+      const name = line(c.name, 120); if (!name) continue;
+      const m = line(c.link, 300).match(/^https:\/\/([a-z]{2,3}\.)?(www\.)?linkedin\.com\/in\/([^/?#\s]+)\/?$/i);
+      out.push({ name, role: line(c.role, 120), link: m ? `https://www.linkedin.com/in/${m[3]}/` : '', poster: c.poster === true });
+    }
+    return out;
+  }
+
   static personView(p) {
     const o = {};
     for (const k of ['name', 'kind', 'org', 'role', 'email', 'phone', 'link']) if (typeof p[k] === 'string' && p[k]) o[k] = p[k];
@@ -183,6 +277,23 @@ export class Dossier {
     const out = { saved: true, preferences: prefs };
     if (dropped.length) out.dropped_fields = dropped;
     return out;
+  }
+
+  /** Profilo professionale (documento cv_profile), solo le sezioni ammesse da src/profile.js. Sola lettura, nulla su disco né nei log. */
+  async profile(sections = SECTIONS) {
+    let j;
+    try { j = await this.api.call('doc_list'); }
+    catch (e) { if (e.code === 'agent_scope') return { ok: true, omitted: sections, message: 'La chiave per automazioni non può leggere i documenti: profilo non disponibile.' }; throw e; }
+    const doc = (j.docs || []).filter(x => x.kind === PROFILE_KIND && !x.application_id).sort((a, b) => (b.created_at || 0) - (a.created_at || 0))[0];
+    if (!doc) return { ok: true, saved: false, message: "L'utente non ha ancora salvato un profilo: si crea in Jobdossiers, nella pagina Profilo." };
+    let bytes;
+    try { bytes = await this.api.bytes('doc_get', { id: doc.id }, { max: 1024 * 1024 }); }
+    catch (e) { if (e.code === 'agent_scope') return { ok: true, omitted: sections, message: 'La chiave per automazioni non può leggere il profilo.' }; throw e; }
+    let raw;
+    try { raw = JSON.parse(new TextDecoder().decode(await decBytes(await this.dek(), bytes, AAD.doc))); }
+    catch { throw new ApiError('unreadable', { message: 'Documento del profilo non decifrabile o non in formato JSON' }); }
+    const { profile, truncated } = cleanProfile(raw, sections);
+    return { ok: true, saved: true, profile, ...(truncated && { truncated: true }) };
   }
 
   async findDuplicates(cand) {
@@ -418,22 +529,6 @@ export class Dossier {
         throw e;
       }
     }
-  }
-
-  /** Dossi (AI di sistema del portale, azione assistant): stesse candidature e stesso blocco dati di app.php, l'annuncio in visione
-   *  nella prima domanda. Senza consenso esplicito non parte nulla: le candidature decifrate passano in chiaro dal portale all'AI. */
-  async dossi({ messages, posting, first = false, consent = false } = {}) {
-    if (consent !== true) throw new ApiError('asst_consent', { message: 'Serve il consenso: con l\'AI di sistema le candidature decifrate e le domande passano in chiaro dal portale a Infomaniak.' });
-    const ok = Array.isArray(messages) && messages.length && messages.every(m => m && (m.role === 'user' || m.role === 'assistant') && typeof m.content === 'string' && m.content.trim())
-      && messages[messages.length - 1].role === 'user';
-    if (!ok) throw invalid('messages: elenco di {role: user|assistant, content}, l\'ultimo dell\'utente');
-    const msgs = messages.map(m => ({ role: m.role, content: m.content }));
-    const i = msgs.findIndex(m => m.role === 'user');
-    msgs[i] = { role: 'user', content: withPosting(msgs[i].content, posting && typeof posting === 'object' ? posting : null) };
-    const { items } = await this.load();
-    const ctx = buildContext(items.filter(x => !x.bad).map(x => record(x.row, x.d)), { max: MAX_CTX_SYS });
-    const j = await this.api.call('assistant', { context: contextBlock(this.today(), ctx), messages: trimHistory(msgs).msgs, first: first === true, consent: true });
-    return { text: String(j.text || ''), truncated: j.truncated === true, usage: j.usage ?? null, applications: ctx.included };
   }
 
   async quota() {

@@ -3,15 +3,9 @@
 body { font: 13px/1.4 system-ui, -apple-system, "Segoe UI", sans-serif; margin: 0; padding: 12px; min-width: 260px; }
 header { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; margin-bottom: 8px; }
 header .link { white-space: nowrap; }
-.dossi { margin-top: 14px; padding: 8px; border: 1px solid var(--line); border-radius: 4px; }
-.dossi .log { max-height: 320px; overflow-y: auto; margin: 8px 0; }
-.dossi .msg-u, .dossi .msg-a { white-space: pre-wrap; padding: 6px 8px; border-radius: 6px; margin: 4px 0; }
-.dossi .msg-u { background: color-mix(in srgb, var(--accent) 12%, transparent); margin-left: 24px; }
-.dossi .msg-a { border: 1px solid var(--line); margin-right: 12px; }
-.dossi .quick { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px; } .dossi .quick[hidden] { display: none; }
-.dossi .row2 .link { white-space: nowrap; }
-.dossi .chip { width: auto; padding: 3px 8px; font-weight: 400; font-size: 12px; color: inherit; background: transparent; border: 1px solid var(--line); border-radius: 12px; }
-.dossi .row2 { display: flex; gap: 8px; align-items: center; margin-top: 6px; } .dossi .row2 #dossi-send { width: auto; margin-left: auto; padding: 6px 14px; }
+.box { margin-top: 14px; padding: 8px; border: 1px solid var(--line); border-radius: 4px; }
+.box .chip { width: auto; padding: 3px 8px; font-weight: 400; font-size: 12px; color: inherit; background: transparent; border: 1px solid var(--line); border-radius: 12px; }
+.box .row2 { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-top: 6px; }
 label.inline { display: inline; font-weight: 400; } label.inline input { display: inline; width: auto; margin: 0 4px 0 0; }
 footer { margin-top: 16px; padding-top: 8px; border-top: 1px solid var(--line); }
 label { display: block; margin: 0 0 8px; font-weight: 600; }
@@ -33,3 +27,7 @@ button.link { width: auto; padding: 0; color: var(--accent); background: none; f
 .match .note { color: GrayText; font-size: 11px; }
 .dups { margin: 0 0 8px; padding: 6px 8px; border: 1px solid var(--warn); border-radius: 4px; }
 .dups ul { margin: 4px 0 0; padding-left: 18px; }
+.match .trip { margin-top: 6px; padding-top: 4px; border-top: 1px solid var(--line); } .match .trip .small { display: block; margin: 2px 0 0; }
+.people-row { display: flex; gap: 6px; align-items: flex-start; margin-top: 6px; font-weight: 400; } .people-row input { width: auto; margin: 2px 0 0; }
+.dups .addc { width: auto; margin-top: 6px; padding: 4px 10px; font-weight: 400; }
+.remind { margin: 6px 0 10px; display: flex; flex-wrap: wrap; gap: 4px 10px; align-items: baseline; } .remind[hidden] { display: none; }

@@ -39,7 +39,7 @@ Check ((Get-ItemProperty $uninst -ErrorAction SilentlyContinue).DisplayName -eq 
 $v = & $exe --version
 Check ($LASTEXITCODE -eq 0 -and "$v" -match '^\d+\.\d+\.\d+') "server: --version ($v)"
 $tools = ('{"jsonrpc":"2.0","id":1,"method":"tools/list"}' | & $exe | ConvertFrom-Json).result.tools
-Check ($tools.Count -eq 13) "server: $($tools.Count) tool (attesi 13)"
+Check ($tools.Count -eq 14 -and ($tools.name -contains "jd_profile")) "server: $($tools.Count) tool (attesi 14, con jd_profile)"
 $chk = (& $exe --check 2>&1 | Out-String)
 Check ($LASTEXITCODE -eq 1 -and $chk -match 'Chiave non trovata') "server senza chiave: errore chiaro, nessun crash"
 

@@ -24,7 +24,7 @@ test('estensione: manifest con permessi minimi e ID uguale a quello ammesso dal 
   const hex = createHash('sha256').update(Buffer.from(m.key, 'base64')).digest('hex').slice(0, 32);
   assert.equal([...hex].map(c => String.fromCharCode(97 + parseInt(c, 16))).join(''), EXTENSION_IDS[0]);
   let js = '';
-  for (const f of ['panel.js', 'background.js', 'grab.js', 'detect.js', 'parse.js', 'match.js']) js += await readFile(ext(f), 'utf8');
+  for (const f of ['panel.js', 'background.js', 'grab.js', 'detect.js', 'parse.js', 'match.js', 'travel.js', 'search.js']) js += await readFile(ext(f), 'utf8');
   assert.ok(!/innerHTML|insertAdjacentHTML|eval\(|new Function/.test(js), 'i dati della pagina non diventano HTML né codice');
 });
 
@@ -119,4 +119,90 @@ test('estrazione: riquadro dell\'annuncio e sezione «About the job» (LinkedIn 
   assert.deepEqual(splitPlace('Switzerland'), { city: '', country: 'CH' });
   assert.deepEqual(splitPlace('Buchs (SG)'), { city: 'Buchs (SG)', country: '' }, 'paese non indicato: non si inventa');
   assert.deepEqual(splitPlace(''), { city: '', country: '' });
+});
+
+test('piattaforme: pagine dei singoli annunci, pagine di verifica anti-bot, entità HTML e paesi per esteso', () => {
+  for (const u of ['https://ch.talent.com/view?id=641833524766508202', 'https://ch.jooble.org/desc/4986883939559862331?ckey=x', 'https://www.adzuna.ch/details/5972940868',
+    'https://www.adzuna.ch/land/ad/5972940868?se=x', 'https://www.simplyhired.com/job/tMMe__6_8_ovDBRQwp9JHvdUNPeBXuFPnae0I2', 'https://www.ziprecruiter.com/c/Acme/Job/Security-Engineer/-in-Austin,TX?jid=1',
+    'https://www.monster.com/job-openings/security-engineer-austin-tx--1234', 'https://www.careerbuilder.com/job/J3T0AB6YDQZ2', 'https://uk.jora.com/job/Security-Analyst-123abc',
+    'https://www.jobup.ch/fr/emplois/detail/00000000-1111-4222-8333-444455556666/'])
+    assert.equal(detectJob({ url: u }).kind, 'job', u);
+  for (const t of ['Additional Verification Required', 'Humans only', "Let's confirm you are human", 'Just a moment...', 'Zusätzliche Verifizierung erforderlich', 'Nur einen Moment…', 'Vérification supplémentaire requise'])
+    assert.equal(detectJob({ url: 'https://ch.indeed.com/viewjob?jk=0a1b2c3d4e5f6a7b', title: t, ld: [JSON.stringify({ '@type': 'JobPosting', title: 'x' })] }).kind, 'blocked', t);
+  const f = fields({ url: 'https://acme.wd1.myworkdayjobs.com/en-US/acme/job/New-York/Analyst_R1', ld: [JSON.stringify({ '@type': 'JobPosting', title: 'Analyst',
+    hiringOrganization: { name: 'Muster &amp; Partner, Inc.' }, jobLocation: { address: { addressLocality: 'New York City', addressCountry: 'United States of America' } } })] });
+  assert.deepEqual([f.company, f.employer_zip_city, f.employer_country], ['Muster & Partner, Inc.', 'New York City', 'US']);
+  assert.equal(fields({ url: 'https://x.example/j', ld: [JSON.stringify({ '@type': 'JobPosting', title: 'Head of IT &#8211; Security' })] }).role, 'Head of IT – Security');
+});
+
+test('jobs.ch: annuncio aperto accanto ai risultati (…/vacancies/?term=…&jobid=…)', async () => {
+  const { selectedUrl, postingFor } = await import('../extension/parse.js');
+  const id = 'e8337f23-b9dc-432b-80f7-a489a7f1a98e', other = '00000000-1111-4222-8333-444455556666';
+  const posting = (uuid, title, company, city) => ({ '@type': 'JobPosting', title, url: `https://www.jobs.ch/en/vacancies/detail/${uuid}/`,
+    hiringOrganization: { name: company }, jobLocation: { address: { addressRegion: city, addressCountry: 'CH' } }, description: '<p>Testo</p>' });
+  const list = JSON.stringify({ '@type': 'ItemList', itemListElement: [{ '@type': 'ListItem', item: posting(other, 'Primo risultato', 'Altra AG', 'Bern') }, { '@type': 'ListItem', item: posting(id, 'Information Security Officer 80-100% (w/m)', 'Muster Haustechnik AG', 'Schwerzenbach') }] });
+  const raw = { url: `https://www.jobs.ch/en/vacancies/?term=information%20security&jobid=${id}`, title: 'Information Security Jobs | jobs.ch', ld: [list],
+    site: { company: 'About the company Muster Haustechnik AG Schwerzenbach See company profile', info: '20 November 2026 80 – 100% Festanstellung' } };
+  assert.equal(selectedUrl(raw), `https://www.jobs.ch/en/vacancies/detail/${id}/`);
+  assert.equal(detectJob(raw).kind, 'job');
+  const f = fields(raw);
+  assert.deepEqual([f.role, f.company, f.employer_zip_city, f.employer_country, f.job_url], ['Information Security Officer 80-100% (w/m)', 'Muster Haustechnik AG', 'Schwerzenbach', 'CH', `https://www.jobs.ch/en/vacancies/detail/${id}/`]);
+  assert.equal(postingFor({ ...raw, url: 'https://www.jobs.ch/en/vacancies/?term=x' }), undefined, 'senza annuncio scelto: nessun risultato dell\'elenco a caso');
+  assert.equal(detectJob({ ...raw, url: 'https://www.jobs.ch/en/vacancies/?term=x' }).kind, 'list');
+  assert.equal(postingFor({ ...raw, url: `https://www.jobs.ch/en/vacancies/?jobid=${'1'.repeat(8)}-1111-4111-8111-111111111111` }), undefined, 'jobid non nell\'elenco');
+  assert.equal(selectedUrl({ url: `https://example.org/?jobid=${id}` }), '', 'solo jobs.ch e jobup.ch');
+  // senza dati strutturati dell'annuncio (elenco cambiato dopo il primo caricamento): luogo dall'indirizzo del riquadro
+  const dom = fields({ ...raw, ld: [], site: { title: 'Information Security Officer 80-100% (w/m)', company: 'Muster Haustechnik AG', place: 'Bahnstrasse 24, 8603 Schwerzenbach', info: '' } });
+  assert.deepEqual([dom.employer_zip_city, dom.employer_country, dom.company, dom.job_url], ['8603 Schwerzenbach', 'CH', 'Muster Haustechnik AG', `https://www.jobs.ch/en/vacancies/detail/${id}/`]);
+});
+
+test('titolo della scheda: con «|» il trattino resta nel titolo', async () => {
+  const { splitTitle } = await import('../extension/parse.js');
+  assert.deepEqual(splitTitle('INFORMATION SECURITY MANAGER – GROUPE (H/F) | Belmonte SA | LinkedIn'), { role: 'INFORMATION SECURITY MANAGER – GROUPE (H/F)', company: 'Belmonte SA' });
+  assert.deepEqual(splitTitle('Head of IT - Muster AG'), { role: 'Head of IT', company: 'Muster AG' });
+});
+
+test('paese: sui siti svizzeri un luogo senza paese è in Svizzera, altrove resta vuoto', async () => {
+  const { fields, swissSite } = await import('../extension/parse.js');
+  const raw = url => ({ url, title: 'Security Engineer | Muster AG', ld: [], top: { title: 'Security Engineer', company: 'Muster AG', location: 'Zürich' } });
+  assert.equal(fields(raw('https://ch.talent.com/view?id=1')).employer_country, 'CH');
+  assert.equal(fields(raw('https://www.jobs.ch/de/stellenangebote/detail/x/')).employer_country, 'CH');
+  assert.equal(fields(raw('https://www.example.com/job/1')).employer_country, '');
+  assert.equal(swissSite('https://chase.example.com/'), false);
+});
+
+test('verifica anti-bot: le frasi brevi valgono solo come titolo intero', async () => {
+  const { detectJob } = await import('../extension/detect.js');
+  assert.notEqual(detectJob({ url: 'https://www.example.ch/job/1', title: 'Un momento di svolta: Project Manager', h1: 'Project Manager', ld: [] }).kind, 'blocked');
+});
+
+test('Indeed accanto ai risultati: annuncio scelto, luogo dall\'indirizzo con NPA, paese svizzero', async () => {
+  const { fields, splitPlace } = await import('../extension/parse.js');
+  const f = fields({ url: 'https://ch.indeed.com/jobs?q=security&vjk=0123456789abcdef', title: 'Oltre 800 offerte di lavoro | Indeed', h1: 'Offerte di lavoro security', ld: [],
+    top: { title: 'Offerte di lavoro security', company: '', location: '' },
+    site: { title: 'Security Officer', company: 'Muster AG', desc: 'x'.repeat(400), loc: 'Musterstrasse 1, 8005 Zurigo, ZH' } });
+  assert.deepEqual([f.role, f.company, f.employer_zip_city, f.employer_country, f.job_url], ['Security Officer', 'Muster AG', '8005 Zurigo', 'CH', 'https://ch.indeed.com/viewjob?jk=0123456789abcdef']);
+  assert.deepEqual(splitPlace('Zurich, Zurich, Switzerland'), { city: 'Zurich', country: 'CH' });
+});
+
+test('indirizzo salvato senza parametri di tracciamento (arrivi da Adzuna, Indeed)', async () => {
+  const { jobUrl } = await import('../extension/parse.js');
+  assert.equal(jobUrl('https://www.jobs.ch/de/stellenangebote/detail/00000000-1111-4222-8333-444455556666/?utm_source=adzuna.ch&inv=ppd-p&slim=0&ppt=abc'), 'https://www.jobs.ch/de/stellenangebote/detail/00000000-1111-4222-8333-444455556666/');
+  assert.equal(jobUrl('https://ch.indeed.com/viewjob?jk=0123456789abcdef&from=serp&tk=xyz'), 'https://ch.indeed.com/viewjob?jk=0123456789abcdef');
+  assert.equal(jobUrl('https://careers.example.com/job?id=42&utm_campaign=x&gclid=1'), 'https://careers.example.com/job?id=42');
+});
+
+test('date dell\'annuncio: pubblicazione e scadenza da dati strutturati, LinkedIn, jobs.ch e testo', async () => {
+  const { jobDates, parseDate, agoDate } = await import('../extension/parse.js');
+  const now = new Date('2026-11-25T12:00:00Z');
+  assert.deepEqual(['Bewerbungsfrist: 15.12.2026', '20 November 2026', '20. Dezember 2026', 'December 15, 2026', '15 décembre 2026', '31/01/2027', 'domani'].map(parseDate), ['2026-12-15', '2026-11-20', '2026-12-20', '2026-12-15', '2026-12-15', '2027-01-31', '']);
+  assert.deepEqual(['3 days ago', 'Reposted 2 weeks ago', 'vor 3 Tagen', 'il y a 5 jours', '3 giorni fa', '17 hours ago', 'vor Ort'].map(s => agoDate(s, now)), ['2026-11-22', '2026-11-11', '2026-11-22', '2026-11-20', '2026-11-22', '2026-11-25', '']);
+  const ld = JSON.stringify({ '@type': 'JobPosting', title: 'x', datePosted: '2026-11-02T08:00:00Z', validThrough: '2027-02-28' });
+  assert.deepEqual(jobDates({ ld: [ld] }, now), { posted: '2026-11-02', postedApprox: false, deadline: '2027-02-28' });
+  assert.deepEqual(jobDates({ ld: [ld], site: { desc: 'Bewerbungsschluss ist der 15. Januar 2027.' } }, now).deadline, '2027-01-15', 'la scadenza scritta vale più di validThrough');
+  assert.deepEqual(jobDates({ ld: [], top: { lines: ['Zurich, Switzerland · 1 week ago · 14 people clicked apply'] } }, now), { posted: '2026-11-18', postedApprox: true, deadline: '' });
+  assert.equal(jobDates({ ld: [], site: { info: '20 November 2026 80 – 100% Festanstellung' } }, now).posted, '2026-11-20');
+  assert.equal(jobDates({ ld: [], site: { desc: 'You meet deadlines. Start date: 01.01.2027.' } }, now).deadline, '');
+  const ld2 = JSON.stringify({ '@type': 'JobPosting', title: 'x', validThrough: '2027-03-31', description: '<p>Bewerbungsfrist: <b>15.12.2026</b>.</p>' });
+  assert.equal(jobDates({ ld: [ld2] }, now).deadline, '2026-12-15', 'scadenza scritta nel testo dei dati strutturati');
 });
